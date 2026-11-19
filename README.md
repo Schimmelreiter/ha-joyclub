@@ -139,4 +139,4 @@ Read only – the integration never registers, deregisters or writes anything on
 
 ## License
 
-MIT
+MIT. The icon is `mdi:cards-heart` from [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers Free License, Apache 2.0); it is not the JOYclub logo.
