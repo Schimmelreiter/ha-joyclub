@@ -89,6 +89,41 @@ def scroll_params(page: str) -> tuple[str, dict] | None:
         return None
 
 
+_UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+
+
+def extract_ssoautoid(text: str) -> str | None:
+    """SSOAUTOID from whatever the user pastes.
+
+    Accepts the bare value, a JSON cookie export (cookie editors: list of objects with
+    "name"/"value", or a {"name": "value"} mapping), a Netscape cookies.txt and a
+    Cookie header ("a=b; SSOAUTOID=…").
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        data = [{"name": k, "value": v} for k, v in data.items()] if "name" not in data else [data]
+    if isinstance(data, list):
+        for c in data:
+            if isinstance(c, dict) and c.get("name") == "SSOAUTOID" and isinstance(c.get("value"), str):
+                return c["value"].strip() or None
+        return None
+    for line in text.splitlines():  # Netscape cookies.txt: domain flag path secure expiry name value
+        parts = line.strip().split("\t")
+        if len(parts) >= 7 and parts[5] == "SSOAUTOID":
+            return parts[6].strip() or None
+    if m := re.search(r"SSOAUTOID\s*[=:]\s*\"?([^\s;\",]+)", text):
+        return m.group(1)
+    if re.fullmatch(_UUID, text) or re.fullmatch(r"[^\s;=]{16,}", text):
+        return text
+    return None
+
+
 def session_user_id(page: str) -> str | None:
     """Id of the logged in member, None if the page is not logged in."""
     m = re.search(r'data-session-user-id="(\d+)"', page)

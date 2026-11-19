@@ -114,3 +114,18 @@ def test_end_ignores_noise() -> None:
 
 def test_rule_key_normalises() -> None:
     assert parser.rule_key("𝑵𝑶 𝑳𝑰𝑴𝑰𝑻𝑺", "Faro 8") == parser.rule_key("NO LIMITS", "faro 8")
+
+
+def test_extract_ssoautoid() -> None:
+    v = "0f0f0f0f-1234-4abc-8def-0123456789ab"
+    export = (
+        '[{"domain": ".identity.joyclub.com", "name": "SSOID", "value": "x"}, {"domain": ".identity.joyclub.com", "name": "SSOAUTOID", "value": "%s"}]'
+        % v
+    )
+    assert parser.extract_ssoautoid(export) == v
+    assert parser.extract_ssoautoid('{"SSOAUTOID": "%s", "VID": "y"}' % v) == v
+    assert parser.extract_ssoautoid(f"FUP_vid=a; SSOAUTOID={v}; VID=b") == v
+    assert parser.extract_ssoautoid(f".identity.joyclub.com\tTRUE\t/\tTRUE\t1826589975\tSSOAUTOID\t{v}") == v
+    assert parser.extract_ssoautoid(f"  {v}\n") == v
+    assert parser.extract_ssoautoid('[{"name": "FUP_sid", "value": "z"}]') is None
+    assert parser.extract_ssoautoid("kein Cookie") is None

@@ -130,15 +130,25 @@ async def test_config_flow(hass: HomeAssistant, joy: FakeJoy) -> None:
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
     joy.auth_ok = False
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: "x"})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: "11111111-2222-3333-4444-555555555555"}
+    )
     assert result["errors"] == {"base": "invalid_auth"}
     joy.auth_ok = True
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: " abc "}
+        result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: "kein Cookie"}
+    )
+    assert result["errors"] == {CONF_SSOAUTOID: "no_cookie"}
+    export = (
+        '[{"domain": ".identity.joyclub.com", "name": "SSOAUTOID", "value": "0f0f0f0f-1234-4abc-8def-0123456789ab"},'
+    )
+    export += ' {"domain": ".joyclub.com", "name": "FUP_sid", "value": "x"}]'
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: export}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["result"].unique_id == "4711"
-    assert result["data"][CONF_SSOAUTOID] == "abc"
+    assert result["data"][CONF_SSOAUTOID] == "0f0f0f0f-1234-4abc-8def-0123456789ab"
     await hass.async_block_till_done()
     assert await hass.config_entries.async_unload(result["result"].entry_id)
 

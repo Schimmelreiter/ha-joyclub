@@ -3,27 +3,29 @@
     "step": {
       "user": {
         "title": "JOYclub account",
-        "description": "Copy the cookie **SSOAUTOID** of `identity.joyclub.com` from a browser in which you logged in with **Stay logged in** ticked (valid for one year). The password is not needed and not stored.",
+        "description": "Log in to JOYclub in a browser with **Stay logged in** ticked, then export the cookies of `joyclub.com` (e.g. with a cookie editor extension) and paste the export here. Only the long-lived cookie SSOAUTOID (valid for one year) is kept; the password is never needed.",
         "data": {
           "name": "Name of the account",
-          "ssoautoid": "SSOAUTOID cookie",
+          "ssoautoid": "Cookies of joyclub.com",
           "flaresolverr": "FlareSolverr URL (optional)"
         },
         "data_description": {
-          "flaresolverr": "e.g. http://127.0.0.1:8191 – used only if Cloudflare blocks a request."
+          "flaresolverr": "e.g. http://127.0.0.1:8191 – used only if Cloudflare blocks a request.",
+          "ssoautoid": "JSON export of a cookie editor, a cookies.txt or just the value of SSOAUTOID."
         }
       },
       "reauth_confirm": {
         "title": "Renew JOYclub cookie",
-        "description": "JOYclub no longer accepts the cookie of **{name}**. Copy a fresh SSOAUTOID from the browser.",
+        "description": "JOYclub no longer accepts the login of **{name}**. Log in again in the browser with Stay logged in and paste the cookies of joyclub.com.",
         "data": {
-          "ssoautoid": "SSOAUTOID cookie"
+          "ssoautoid": "Cookies of joyclub.com"
         }
       }
     },
     "error": {
-      "invalid_auth": "JOYclub does not accept this cookie (log in again with Stay logged in and copy SSOAUTOID).",
-      "cannot_connect": "JOYclub not reachable."
+      "invalid_auth": "JOYclub does not accept this login any more – log in again in the browser with Stay logged in and export the cookies again.",
+      "cannot_connect": "JOYclub not reachable.",
+      "no_cookie": "No SSOAUTOID found. Export the cookies while the filter is set to joyclub.com (the cookie belongs to identity.joyclub.com)."
     },
     "abort": {
       "already_configured": "This account is set up already.",

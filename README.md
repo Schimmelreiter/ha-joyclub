@@ -21,9 +21,11 @@ Manual: copy `custom_components/joyclub` into your `config/custom_components`, r
 *Settings → Devices & services → Add integration → JOYclub*, one entry per account:
 
 1. Log in to JOYclub in a browser with **Stay logged in** ticked.
-2. Copy the cookie **`SSOAUTOID`** of `identity.joyclub.com` (browser developer tools →
-   Application/Storage → Cookies, or a cookie export extension). It is valid for one year.
-3. Paste it together with a name for the account.
+2. Export the cookies of `joyclub.com` (e.g. with a cookie editor extension, filtered to
+   joyclub.com) and paste the export – JSON, a `cookies.txt` or just the value of `SSOAUTOID`.
+3. Give the account a name.
+
+Only the cookie **`SSOAUTOID`** of `identity.joyclub.com` is kept; it is valid for one year.
 
 The password is never needed or stored: JOYclub's login form is protected by Cloudflare
 Turnstile, which an integration cannot solve. With `SSOAUTOID` the integration gets a

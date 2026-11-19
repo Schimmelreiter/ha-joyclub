@@ -33,8 +33,9 @@ from .const import (
     MODE_NO,
     MODE_YES,
 )
+from .parser import extract_ssoautoid
 
-_SECRET = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD))
+_COOKIES = selector.TextSelector(selector.TextSelectorConfig(multiline=True))
 _URL = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.URL))
 
 
@@ -53,9 +54,11 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        if user_input is not None:
+        if user_input is not None and not (sso := extract_ssoautoid(user_input[CONF_SSOAUTOID])):
+            errors[CONF_SSOAUTOID] = "no_cookie"
+        elif user_input is not None:
             try:
-                user_id = await _check(self.hass, user_input[CONF_SSOAUTOID], user_input.get(CONF_FLARESOLVERR))
+                user_id = await _check(self.hass, sso, user_input.get(CONF_FLARESOLVERR))
             except JoyclubAuthError:
                 errors["base"] = "invalid_auth"
             except JoyclubError:
@@ -66,14 +69,14 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=user_input[CONF_NAME],
                     data={
-                        CONF_SSOAUTOID: user_input[CONF_SSOAUTOID].strip(),
+                        CONF_SSOAUTOID: sso,
                         CONF_FLARESOLVERR: user_input.get(CONF_FLARESOLVERR) or "",
                     },
                 )
         schema = vol.Schema(
             {
                 vol.Required(CONF_NAME): str,
-                vol.Required(CONF_SSOAUTOID): _SECRET,
+                vol.Required(CONF_SSOAUTOID): _COOKIES,
                 vol.Optional(CONF_FLARESOLVERR): _URL,
             }
         )
@@ -87,9 +90,11 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         entry = self._get_reauth_entry()
-        if user_input is not None:
+        if user_input is not None and not (sso := extract_ssoautoid(user_input[CONF_SSOAUTOID])):
+            errors[CONF_SSOAUTOID] = "no_cookie"
+        elif user_input is not None:
             try:
-                user_id = await _check(self.hass, user_input[CONF_SSOAUTOID], entry.data.get(CONF_FLARESOLVERR))
+                user_id = await _check(self.hass, sso, entry.data.get(CONF_FLARESOLVERR))
             except JoyclubAuthError:
                 errors["base"] = "invalid_auth"
             except JoyclubError:
@@ -97,12 +102,10 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(user_id)
                 self._abort_if_unique_id_mismatch(reason="wrong_account")
-                return self.async_update_reload_and_abort(
-                    entry, data_updates={CONF_SSOAUTOID: user_input[CONF_SSOAUTOID].strip()}
-                )
+                return self.async_update_reload_and_abort(entry, data_updates={CONF_SSOAUTOID: sso})
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_SSOAUTOID): _SECRET}),
+            data_schema=vol.Schema({vol.Required(CONF_SSOAUTOID): _COOKIES}),
             description_placeholders={"name": entry.title},
             errors=errors,
         )
