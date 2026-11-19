@@ -124,6 +124,14 @@ def extract_ssoautoid(text: str) -> str | None:
     return None
 
 
+def cookie_file_path(text: str) -> str | None:
+    """The input is a path to a cookie file (cookies.json / cookies.txt) rather than the cookies themselves."""
+    text = (text or "").strip()
+    if "\n" in text or not text.startswith("/"):
+        return None
+    return text
+
+
 def session_user_id(page: str) -> str | None:
     """Id of the logged in member, None if the page is not logged in."""
     m = re.search(r'data-session-user-id="(\d+)"', page)
@@ -152,6 +160,7 @@ class EventDetails:
     latitude: float | None = None
     longitude: float | None = None
     description: str = ""
+    ics_description: str = ""
     status: str = ""
     extra: dict = field(default_factory=dict)
 
@@ -181,6 +190,8 @@ def parse_ics(text: str, details: EventDetails | None = None) -> EventDetails:
         key, *params = name.split(";")
         if key == "SUMMARY" and not d.title:
             d.title = _ics_value(value).strip()
+        elif key == "DESCRIPTION" and not d.ics_description:
+            d.ics_description = _ics_value(value).strip()
         elif key == "LOCATION" and not d.address:
             d.address = _ics_value(value).strip()
         elif key == "GEO" and d.latitude is None:
@@ -326,3 +337,92 @@ def rule_key(title: str, location: str) -> str:
         return re.sub(r"[^a-z0-9äöüß]+", " ", s).strip()
 
     return f"{norm(title)}|{norm(location)}"
+
+
+# ---------------------------------------------------------------- titles
+
+_EVENT_URL_RE = re.compile(r"https://www\.joyclub\.de/event/\d+[^\s<>\"]*")
+
+
+def event_url_in(text: str) -> str:
+    """First JOYclub event link in a text (description of a calendar event)."""
+    m = _EVENT_URL_RE.search(text or "")
+    return m.group(0) if m else ""
+
+
+# Letters of other scripts that organisers use because they look like Latin ones
+# fmt: off
+_HOMOGLYPHS = {
+    # Cyrillic
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P", "С": "C", "Т": "T",
+    "Х": "X", "У": "Y", "Ѕ": "S", "І": "I", "Ј": "J", "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
+    "у": "y", "х": "x", "ѕ": "s", "і": "i", "ј": "j", "ԁ": "d", "ԛ": "q", "ԝ": "w",
+    # Greek
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O",
+    "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "ο": "o", "ν": "v",
+    # Tifinagh
+    "ⵏ": "I", "ⵑ": "I", "ⵔ": "O", "ⵙ": "O",
+    # Small capitals and similar
+    "ᴀ": "A", "ʙ": "B", "ᴄ": "C", "ᴅ": "D", "ᴇ": "E", "ɢ": "G", "ʜ": "H", "ɪ": "I", "ᴊ": "J", "ᴋ": "K",
+    "ʟ": "L", "ᴍ": "M", "ɴ": "N", "ᴏ": "O", "ᴘ": "P", "ʀ": "R", "ꜱ": "S", "ᴛ": "T", "ᴜ": "U", "ᴠ": "V",
+    "ᴡ": "W", "ʏ": "Y", "ᴢ": "Z", "ɛ": "E", "Ɛ": "E",
+}
+# fmt: on
+# Letters in circles/squares without a compatibility decomposition (negative circled/squared, flags)
+for _base in (0x1F150, 0x1F170, 0x1F1E6):
+    for _i in range(26):
+        _HOMOGLYPHS[chr(_base + _i)] = chr(ord("A") + _i)
+_HOMOGLYPH_TABLE = str.maketrans(_HOMOGLYPHS)
+_DROP_CATEGORIES = {"So", "Sk", "Cs", "Co", "Cn", "Cf", "Mn", "Me"}
+
+
+def parse_abbreviations(text: str) -> dict[str, str]:
+    """ "HÜ=H Ü" per line -> {"HÜ": "H Ü"}."""
+    result: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip():
+            result[key.strip()] = value.strip()
+    return result
+
+
+def _collapse_spaced(text: str) -> str:
+    """ "N O L I M I T S" -> "NOLIMITS": runs of three or more single letters are joined."""
+    tokens = text.split(" ")
+    out: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        if len(run) >= 3:
+            out.append("".join(run))
+        else:
+            out.extend(run)
+        run.clear()
+
+    for tok in tokens:
+        if len(tok) == 1 and tok.isalpha():
+            run.append(tok)
+        else:
+            flush()
+            out.append(tok)
+    flush()
+    return " ".join(out)
+
+
+def clean_title(title: str, abbreviations: dict[str, str] | None = None) -> str:
+    """Readable title: decorative letters to plain ones, no emojis, abbreviations replaced.
+
+    "𝗡𝗢 𝗟 ⵑ 𝗠 ⵑ 𝗧 𝗦 𝑯Ü X-MAS🎄" -> "NO LIMITS HÜ X-MAS" (with {"HÜ": "H Ü"}: "NO LIMITS H Ü X-MAS").
+    """
+    s = unicodedata.normalize("NFKC", title or "")
+    if re.search(r"[A-Za-z]", s):
+        s = s.translate(_HOMOGLYPH_TABLE)
+    s = "".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) not in _DROP_CATEGORIES)
+    s = unicodedata.normalize("NFC", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = _collapse_spaced(s)
+    for short, spoken in (abbreviations or {}).items():
+        s = re.sub(r"(?<!\w)" + re.escape(short) + r"(?!\w)", spoken, s, flags=re.IGNORECASE)
+    s = re.sub(r"\s+", " ", s).strip(" -–—|·*")
+    return s or (title or "").strip()

@@ -3,6 +3,9 @@
     "refresh": {
       "service": "mdi:refresh"
     },
+    "preview": {
+      "service": "mdi:eye-check-outline"
+    },
     "answer": {
       "service": "mdi:reply"
     }

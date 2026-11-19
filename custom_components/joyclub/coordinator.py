@@ -15,12 +15,18 @@ from homeassistant.util import dt as dt_util
 from . import parser
 from .api import JoyclubAuthError, JoyclubClient, JoyclubError
 from .const import (
+    CONF_ABBREVIATIONS,
+    CONF_CLEAN_TITLE,
     CONF_CLUBMAIL_MINUTES,
     CONF_DEFAULT_HOURS,
+    CONF_DESCRIPTION,
     CONF_SCAN_HOURS,
+    DEFAULT_ABBREVIATIONS,
     DEFAULT_CLUBMAIL_MINUTES,
     DEFAULT_DEFAULT_HOURS,
     DEFAULT_SCAN_HOURS,
+    DESCRIPTION_FULL,
+    DESCRIPTION_SHORT,
     DOMAIN,
 )
 
@@ -49,6 +55,8 @@ class JoyEvent:
     city: str = ""
     latitude: float | None = None
     longitude: float | None = None
+    display_title: str = ""
+    description: str = ""
 
     @property
     def rule_key(self) -> str:
@@ -112,8 +120,10 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
         title = d.title or card.title
         location = d.location_name or card.city
         key = parser.rule_key(title, location)
-        end = parser.end_from_description(d.description, start) or parser.end_from_description(
-            d.extra.get("page_text", ""), start
+        end = (
+            parser.end_from_description(d.description, start)
+            or parser.end_from_description(d.ics_description, start)
+            or parser.end_from_description(d.extra.get("page_text", ""), start)
         )
         source = END_DESCRIPTION
         if end is None and (rule := self._end_rule(key)):
@@ -123,9 +133,16 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
         if end is None:
             end = start + timedelta(hours=self.config_entry.options.get(CONF_DEFAULT_HOURS, DEFAULT_DEFAULT_HOURS))
             source = END_DEFAULT
+        url = card.url or f"https://www.joyclub.de/event/{card.event_id}.html"
+        options = self.config_entry.options
+        display = title
+        if options.get(CONF_CLEAN_TITLE, True):
+            display = parser.clean_title(
+                title, parser.parse_abbreviations(options.get(CONF_ABBREVIATIONS, DEFAULT_ABBREVIATIONS))
+            )
         return JoyEvent(
             event_id=card.event_id,
-            url=card.url or f"https://www.joyclub.de/event/{card.event_id}.html",
+            url=url,
             status=card.status or d.status or parser.STATUS_REGISTERED,
             title=title,
             start=start,
@@ -136,7 +153,19 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
             city=card.city,
             latitude=d.latitude,
             longitude=d.longitude,
+            display_title=display,
+            description=_description(d, url, options.get(CONF_DESCRIPTION, DESCRIPTION_SHORT)),
         )
+
+
+def _description(d: parser.EventDetails, url: str, mode: str) -> str:
+    """Text for the calendar event; the JOYclub link is always in it (it identifies the event)."""
+    short = d.ics_description  # as in JOYclub's "Add to calendar": shortened text and the link
+    full = d.description if d.description != d.extra.get("page_text") else ""  # not the whole page as fallback
+    text = (full or short) if mode == DESCRIPTION_FULL else (short or full)
+    if parser.event_url_in(text):
+        return text.strip()
+    return f"{text.strip()}\n\n{url}".strip()
 
 
 class ClubmailCoordinator(DataUpdateCoordinator[dict]):

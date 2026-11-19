@@ -19,9 +19,9 @@ def _to_calendar(hass: HomeAssistant, ev: JoyEvent) -> CalendarEvent:
     return CalendarEvent(
         start=ev.start,
         end=ev.end,
-        summary=ev.title + suffix(hass, ev.status),
+        summary=(ev.display_title or ev.title) + suffix(hass, ev.status),
         location=ev.address or ev.location,
-        description=ev.url,
+        description=ev.description or ev.url,
         uid=f"joyclub-{ev.event_id}",
     )
 

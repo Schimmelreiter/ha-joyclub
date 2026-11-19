@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import aiohttp
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -17,7 +17,8 @@ from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.typing import ConfigType
 
 from .api import JoyclubAuthError, JoyclubClient, JoyclubError
-from .const import CONF_FLARESOLVERR, CONF_SSOAUTOID, DOMAIN, MODE_NO, MODE_YES
+from .const import CONF_COOKIE_FILE, CONF_FLARESOLVERR, CONF_SSOAUTOID, DOMAIN, MODE_NO, MODE_YES
+from .cookies import CookieFileError, async_read_cookie_file
 from .coordinator import ClubmailCoordinator, EventsCoordinator
 from .sync import CalendarSync
 
@@ -36,6 +37,7 @@ class JoyclubData:
     client: JoyclubClient
     events: EventsCoordinator
     clubmail: ClubmailCoordinator
+    options: dict = field(default_factory=dict)
 
 
 type JoyclubConfigEntry = ConfigEntry[JoyclubData]
@@ -64,7 +66,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         sync.decide(str(call.data["event_id"]), ANSWERS[call.data["answer"]])
         await _run_sync()
 
+    async def preview(call: ServiceCall) -> ServiceResponse:
+        """What the next sync would do, without changing anything."""
+        actions = await sync.async_sync([(e, e.runtime_data.events) for e in _loaded(hass)], dry_run=True)
+        return {"actions": actions}
+
     hass.services.async_register(DOMAIN, "refresh", refresh)
+    hass.services.async_register(DOMAIN, "preview", preview, supports_response=SupportsResponse.ONLY)
     hass.services.async_register(
         DOMAIN,
         "answer",
@@ -77,8 +85,23 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: JoyclubConfigEntry) -> bool:
     """Log in with the account's SSOAUTOID and start polling."""
     session = async_create_clientsession(hass, cookie_jar=aiohttp.CookieJar())
+    sso = entry.data[CONF_SSOAUTOID]
+    reader = None
+    if path := entry.data.get(CONF_COOKIE_FILE):
+
+        async def reader() -> str | None:
+            try:
+                return await async_read_cookie_file(hass, path)
+            except CookieFileError as err:
+                _LOGGER.warning("Cookie file of %s: %s", entry.title, err)
+                return None
+
+        sso = await reader() or sso  # the file may have been renewed while Home Assistant was down
     client = JoyclubClient(
-        session, entry.data[CONF_SSOAUTOID], entry.options.get(CONF_FLARESOLVERR) or entry.data.get(CONF_FLARESOLVERR)
+        session,
+        sso,
+        entry.options.get(CONF_FLARESOLVERR) or entry.data.get(CONF_FLARESOLVERR),
+        cookie_reader=reader,
     )
     try:
         await client.login()
@@ -91,16 +114,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: JoyclubConfigEntry) -> b
     clubmail = ClubmailCoordinator(hass, entry, client)
     await events.async_config_entry_first_refresh()
     await clubmail.async_config_entry_first_refresh()
-    entry.runtime_data = JoyclubData(client, events, clubmail)
+    entry.runtime_data = JoyclubData(client, events, clubmail, dict(entry.options))
 
     debouncer: Debouncer = hass.data[DOMAIN]["debouncer"]
 
     @callback
+    def _keep_cookie() -> None:
+        """Remember a cookie renewed from the file (used if the file is gone later)."""
+        if client.ssoautoid != entry.data[CONF_SSOAUTOID]:
+            hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_SSOAUTOID: client.ssoautoid})
+
+    @callback
     def _events_updated() -> None:
+        _keep_cookie()
         if events.last_update_success:
             hass.async_create_task(debouncer.async_call())
 
+    _keep_cookie()
     entry.async_on_unload(events.async_add_listener(_events_updated))
+    entry.async_on_unload(clubmail.async_add_listener(_keep_cookie))
     entry.async_on_unload(entry.add_update_listener(_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     hass.async_create_task(debouncer.async_call())
@@ -108,6 +140,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: JoyclubConfigEntry) -> b
 
 
 async def _options_updated(hass: HomeAssistant, entry: JoyclubConfigEntry) -> None:
+    if dict(entry.options) == entry.runtime_data.options:
+        return  # only the stored cookie changed
     await hass.config_entries.async_reload(entry.entry_id)
 
 

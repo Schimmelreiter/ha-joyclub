@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -15,27 +16,36 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import JoyclubAuthError, JoyclubClient, JoyclubError
 from .const import (
+    CONF_ABBREVIATIONS,
     CONF_BOOKMARKED,
     CONF_CANCELLED,
+    CONF_CLEAN_TITLE,
     CONF_CLUBMAIL_MINUTES,
+    CONF_COOKIE_FILE,
     CONF_DEFAULT_HOURS,
+    CONF_DESCRIPTION,
     CONF_FLARESOLVERR,
+    CONF_INVITE,
     CONF_SCAN_HOURS,
     CONF_SSOAUTOID,
     CONF_SYNC,
     CONF_TARGET,
     CONF_WAITLIST,
+    DEFAULT_ABBREVIATIONS,
     DEFAULT_CLUBMAIL_MINUTES,
     DEFAULT_DEFAULT_HOURS,
     DEFAULT_SCAN_HOURS,
+    DESCRIPTION_FULL,
+    DESCRIPTION_SHORT,
     DOMAIN,
     MODE_ASK,
     MODE_NO,
     MODE_YES,
 )
-from .parser import extract_ssoautoid
+from .cookies import CookieFileError, async_resolve
 
 _COOKIES = selector.TextSelector(selector.TextSelectorConfig(multiline=True))
+_EMAILS = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL, multiple=True))
 _URL = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.URL))
 
 
@@ -54,9 +64,16 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        if user_input is not None and not (sso := extract_ssoautoid(user_input[CONF_SSOAUTOID])):
-            errors[CONF_SSOAUTOID] = "no_cookie"
-        elif user_input is not None:
+        sso = path = None
+        if user_input is not None:
+            try:
+                sso, path = await async_resolve(self.hass, user_input[CONF_SSOAUTOID])
+            except CookieFileError:
+                errors[CONF_SSOAUTOID] = "cookie_file"
+            else:
+                if not sso:
+                    errors[CONF_SSOAUTOID] = "no_cookie"
+        if user_input is not None and sso:
             try:
                 user_id = await _check(self.hass, sso, user_input.get(CONF_FLARESOLVERR))
             except JoyclubAuthError:
@@ -70,6 +87,7 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
                     title=user_input[CONF_NAME],
                     data={
                         CONF_SSOAUTOID: sso,
+                        CONF_COOKIE_FILE: path or "",
                         CONF_FLARESOLVERR: user_input.get(CONF_FLARESOLVERR) or "",
                     },
                 )
@@ -90,9 +108,16 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         entry = self._get_reauth_entry()
-        if user_input is not None and not (sso := extract_ssoautoid(user_input[CONF_SSOAUTOID])):
-            errors[CONF_SSOAUTOID] = "no_cookie"
-        elif user_input is not None:
+        sso = path = None
+        if user_input is not None:
+            try:
+                sso, path = await async_resolve(self.hass, user_input[CONF_SSOAUTOID])
+            except CookieFileError:
+                errors[CONF_SSOAUTOID] = "cookie_file"
+            else:
+                if not sso:
+                    errors[CONF_SSOAUTOID] = "no_cookie"
+        if user_input is not None and sso:
             try:
                 user_id = await _check(self.hass, sso, entry.data.get(CONF_FLARESOLVERR))
             except JoyclubAuthError:
@@ -102,7 +127,9 @@ class JoyclubConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(user_id)
                 self._abort_if_unique_id_mismatch(reason="wrong_account")
-                return self.async_update_reload_and_abort(entry, data_updates={CONF_SSOAUTOID: sso})
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={CONF_SSOAUTOID: sso, CONF_COOKIE_FILE: path or ""}
+                )
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=vol.Schema({vol.Required(CONF_SSOAUTOID): _COOKIES}),
@@ -130,8 +157,12 @@ class JoyclubOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
+            invite = [a.strip() for a in user_input.get(CONF_INVITE) or [] if a.strip()]
+            user_input[CONF_INVITE] = invite
             if user_input.get(CONF_SYNC) and not user_input.get(CONF_TARGET):
                 errors[CONF_TARGET] = "target_required"
+            elif any(not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", a) for a in invite):
+                errors[CONF_INVITE] = "invalid_email"
             else:
                 return self.async_create_entry(data=user_input)
         o = {**self.config_entry.options, **(user_input or {})}
@@ -142,6 +173,20 @@ class JoyclubOptionsFlow(OptionsFlow):
                 vol.Required(CONF_WAITLIST, default=o.get(CONF_WAITLIST, False)): bool,
                 vol.Required(CONF_BOOKMARKED, default=o.get(CONF_BOOKMARKED, MODE_NO)): _mode(),
                 vol.Required(CONF_CANCELLED, default=o.get(CONF_CANCELLED, MODE_ASK)): _mode(),
+                vol.Optional(CONF_INVITE, default=o.get(CONF_INVITE, [])): _EMAILS,
+                vol.Required(CONF_DESCRIPTION, default=o.get(CONF_DESCRIPTION, DESCRIPTION_SHORT)): (
+                    selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[DESCRIPTION_SHORT, DESCRIPTION_FULL],
+                            translation_key="description",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                ),
+                vol.Required(CONF_CLEAN_TITLE, default=o.get(CONF_CLEAN_TITLE, True)): bool,
+                vol.Optional(
+                    CONF_ABBREVIATIONS, default=o.get(CONF_ABBREVIATIONS, DEFAULT_ABBREVIATIONS)
+                ): selector.TextSelector(selector.TextSelectorConfig(multiline=True)),
                 vol.Required(
                     CONF_DEFAULT_HOURS, default=o.get(CONF_DEFAULT_HOURS, DEFAULT_DEFAULT_HOURS)
                 ): selector.NumberSelector(

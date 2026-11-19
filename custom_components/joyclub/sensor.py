@@ -77,7 +77,8 @@ class NextPartySensor(CoordinatorEntity[EventsCoordinator], SensorEntity):
         if ev is None:
             return {}
         return {
-            "title": ev.title,
+            "title": ev.display_title or ev.title,
+            "original_title": ev.title,
             "location": ev.location,
             "address": ev.address,
             "end": ev.end.isoformat(),

@@ -129,3 +129,45 @@ def test_extract_ssoautoid() -> None:
     assert parser.extract_ssoautoid(f"  {v}\n") == v
     assert parser.extract_ssoautoid('[{"name": "FUP_sid", "value": "z"}]') is None
     assert parser.extract_ssoautoid("kein Cookie") is None
+
+
+def test_ics_description_and_link() -> None:
+    ics = (
+        "BEGIN:VEVENT\nSUMMARY:X\nDESCRIPTION:Event-Zeit: 19.30 Uhr bis 03.00 Uhr\\nViel Spaß und...\\nhttps://www.joyc\n"
+        " lub.de/event/1735481.x_marl.html\nDTSTART;TZID=Europe/Berlin:20261128T193000\nEND:VEVENT\n"
+    )
+    d = parser.parse_ics(ics)
+    assert d.ics_description.startswith("Event-Zeit: 19.30 Uhr bis 03.00 Uhr\nViel Spaß")
+    assert parser.event_url_in(d.ics_description) == "https://www.joyclub.de/event/1735481.x_marl.html"
+    assert parser.event_url_in("JOYclub: https://www.joyclub.de/event/42.a.html\nJOYclub account: H") == (
+        "https://www.joyclub.de/event/42.a.html"
+    )
+    assert parser.event_url_in("keiner") == ""
+
+
+def test_clean_title() -> None:
+    ab = parser.parse_abbreviations("HÜ=H Ü\n\nkaputt\n X-MAS = Christmas ")
+    assert ab == {"HÜ": "H Ü", "X-MAS": "Christmas"}
+    hue = {"HÜ": "H Ü"}
+    # Mathematical letters, Tifinagh look-alike, letter spacing
+    assert parser.clean_title(
+        "\U0001d5e1\U0001d5e2 \U0001d5df ⵑ \U0001d5e0 ⵑ \U0001d5e7 \U0001d5e6 HÜ X-MAS Special", hue
+    ) == ("NO LIMITS H Ü X-MAS Special")
+    assert (
+        parser.clean_title("Bukkake & Gangbang -  \U0001d46fÜ X-MAS Special") == "Bukkake & Gangbang - HÜ X-MAS Special"
+    )
+    # Small capitals, a separate combining diaeresis, Cyrillic look-alikes
+    assert parser.clean_title("ᴜʟᴛɪᴍᴀᴛᴇ BUKKАKE HÜ-ᴇᴅɪᴛɪᴏɴ") == ("ULTIMATE BUKKAKE HÜ-EDITION")
+    # Emojis go, normal words and umlauts stay, abbreviations only as whole words
+    assert parser.clean_title("*Young Meets Experience\U0001f31f") == "Young Meets Experience"
+    assert parser.clean_title("Hüttenzauber HÜ-Edition", hue) == "Hüttenzauber H Ü-Edition"
+    assert parser.clean_title("Ü 30 Party") == "Ü 30 Party"
+    # A purely Cyrillic title is left alone
+    assert parser.clean_title("Вечеринка") == "Вечеринка"
+    assert parser.clean_title("\U0001f389\U0001f389") == "\U0001f389\U0001f389"
+
+
+def test_cookie_file_path() -> None:
+    assert parser.cookie_file_path(" /config/joyclub/cookies.json ") == "/config/joyclub/cookies.json"
+    assert parser.cookie_file_path('[{"name": "SSOAUTOID"}]') is None
+    assert parser.cookie_file_path("/a\n/b") is None

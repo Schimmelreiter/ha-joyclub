@@ -11,7 +11,7 @@
         },
         "data_description": {
           "flaresolverr": "e.g. http://127.0.0.1:8191 – used only if Cloudflare blocks a request.",
-          "ssoautoid": "JSON export of a cookie editor, a cookies.txt or just the value of SSOAUTOID."
+          "ssoautoid": "JSON export of a cookie editor, a cookies.txt, just the value of SSOAUTOID – or the path to such a file (e.g. /config/joyclub/cookies.json). With a path, the file is read again whenever JOYclub rejects the cookie, so it can be renewed automatically."
         }
       },
       "reauth_confirm": {
@@ -19,13 +19,17 @@
         "description": "JOYclub no longer accepts the login of **{name}**. Log in again in the browser with Stay logged in and paste the cookies of joyclub.com.",
         "data": {
           "ssoautoid": "Cookies of joyclub.com"
+        },
+        "data_description": {
+          "ssoautoid": "JSON export of a cookie editor, a cookies.txt, just the value of SSOAUTOID – or the path to such a file (e.g. /config/joyclub/cookies.json). With a path, the file is read again whenever JOYclub rejects the cookie, so it can be renewed automatically."
         }
       }
     },
     "error": {
       "invalid_auth": "JOYclub does not accept this login any more – log in again in the browser with Stay logged in and export the cookies again.",
       "cannot_connect": "JOYclub not reachable.",
-      "no_cookie": "No SSOAUTOID found. Export the cookies while the filter is set to joyclub.com (the cookie belongs to identity.joyclub.com)."
+      "no_cookie": "No SSOAUTOID found. Export the cookies while the filter is set to joyclub.com (the cookie belongs to identity.joyclub.com).",
+      "cookie_file": "Cannot read this cookie file, or it contains no SSOAUTOID."
     },
     "abort": {
       "already_configured": "This account is set up already.",
@@ -46,16 +50,25 @@
           "default_hours": "Duration if no end is known",
           "scan_hours": "Check registrations every",
           "clubmail_minutes": "Check ClubMails every",
-          "flaresolverr": "FlareSolverr URL (optional)"
+          "flaresolverr": "FlareSolverr URL (optional)",
+          "invite": "Invite to new parties",
+          "description": "Description",
+          "clean_title": "Readable titles",
+          "abbreviations": "Abbreviations"
         },
         "data_description": {
           "target_calendar": "Must allow creating events (e.g. Google Calendar). Events found there already (with the JOYclub link) are not added twice.",
-          "default_hours": "Used when neither the organiser's description (a time range or a stated end) nor a learned rule gives the end. Correct the end in the target calendar once – it is learned for this party and location."
+          "default_hours": "Used when neither the organiser's description (a time range or a stated end) nor a learned rule gives the end. Correct the end in the target calendar once – it is learned for this party and location.",
+          "invite": "E-mail addresses that get an invitation from Google for every new event (only with a Google calendar as target). Existing events are never changed in their guests.",
+          "description": "Shortened as in JOYclub's “Add to calendar”, or the organiser's full text. The JOYclub link is always included.",
+          "clean_title": "Decorative letters (𝗡𝗢, Ⓐ, ᴀʙᴄ, look-alike letters of other alphabets) become normal ones, emojis are removed. Also applied to events already in the target calendar: only the title is changed, guests are not notified.",
+          "abbreviations": "One per line: abbreviation=replacement. “HÜ=H Ü” makes voice assistants spell it out. Only used with readable titles."
         }
       }
     },
     "error": {
-      "target_required": "Choose a target calendar."
+      "target_required": "Choose a target calendar.",
+      "invalid_email": "Invalid e-mail address."
     }
   },
   "selector": {
@@ -64,6 +77,12 @@
         "yes": "Yes",
         "no": "No",
         "ask": "Ask (event on the bus, answer with joyclub.answer)"
+      }
+    },
+    "description": {
+      "options": {
+        "short": "As in “Add to calendar” (shortened)",
+        "full": "Full text"
       }
     }
   },
@@ -86,6 +105,10 @@
     "refresh": {
       "name": "Refresh",
       "description": "Read the registrations of all accounts now and sync the calendars."
+    },
+    "preview": {
+      "name": "Preview",
+      "description": "What the next calendar sync would do (create, change titles, delete), without changing anything. Also for accounts whose sync is still off but have a target calendar."
     },
     "answer": {
       "name": "Answer",

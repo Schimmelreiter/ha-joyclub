@@ -18,14 +18,20 @@ from custom_components.joyclub import parser
 from custom_components.joyclub.api import JoyclubAuthError
 from custom_components.joyclub.const import (
     CONF_CANCELLED,
+    CONF_CLEAN_TITLE,
+    CONF_COOKIE_FILE,
+    CONF_DESCRIPTION,
+    CONF_INVITE,
     CONF_SSOAUTOID,
     CONF_SYNC,
     CONF_TARGET,
+    DESCRIPTION_FULL,
     DOMAIN,
     EVENT_END_GUESSED,
     EVENT_RULE_LEARNED,
     MODE_YES,
 )
+from custom_components.joyclub.google import GoogleError, GoogleTarget
 
 TZ = parser.TZ
 
@@ -71,9 +77,10 @@ class FakeJoy:
             ),
         }
         self.auth_ok = True
+        self.valid: set[str] | None = None  # accepted SSOAUTOID values (None: any)
 
     async def login(self, client) -> None:
-        if not self.auth_ok:
+        if not self.auth_ok or (self.valid is not None and client.ssoautoid not in self.valid):
             raise JoyclubAuthError("no")
         client.user_id = "4711"
         client.clubmail = {"unread_message_count": 7, "unread_conversation_count": 6}
@@ -92,7 +99,7 @@ class FakeJoy:
 def joy():
     fake = FakeJoy()
     with (
-        patch("custom_components.joyclub.api.JoyclubClient.login", lambda c: fake.login(c)),
+        patch("custom_components.joyclub.api.JoyclubClient._login_once", lambda c: fake.login(c)),
         patch("custom_components.joyclub.api.JoyclubClient.registrations", lambda c: fake.registrations(c)),
         patch("custom_components.joyclub.api.JoyclubClient.event_details", lambda c, card: fake.details(c, card)),
         patch("custom_components.joyclub.api.JoyclubClient.refresh_clubmail", lambda c: fake.clubmail(c)),
@@ -210,3 +217,266 @@ async def test_reauth_on_rejected_cookie(hass: HomeAssistant, joy: FakeJoy) -> N
     assert entry.state is ConfigEntryState.SETUP_ERROR
     flows = hass.config_entries.flow.async_progress()
     assert any(f["context"]["source"] == "reauth" for f in flows)
+
+
+# ---------------------------------------------------------------- readable titles, preview, Google
+
+
+def _decorate(joy: FakeJoy) -> None:
+    """Party A gets a decorative title and the iCal text; Party B none."""
+    _, d = joy.events["111"]
+    d.title = "\U0001d5e3\U0001d5ee\U0001d5ff\U0001d601\U0001d606 A HÜ\U0001f389"
+    d.ics_description = "Event-Zeit: 19.00 Uhr bis 03.00 Uhr\nGekürzt...\nhttps://www.joyclub.de/event/111.a.html"
+    d.description = "Event-Zeit: 19.00 Uhr bis 03.00 Uhr\nDer ganze lange Text des Veranstalters."
+
+
+async def _import_old(hass: HomeAssistant, target: str, joy: FakeJoy, summary: str) -> None:
+    """An event the user imported from the iCal file before (DTEND = DTSTART fixed by hand)."""
+    ent = hass.data[DATA_COMPONENT].get_entity(target)
+    _, d = joy.events["111"]
+    await ent.async_create_event(
+        summary=summary,
+        dtstart=d.start,
+        dtend=d.start + timedelta(hours=8),
+        description="Gekürzt...\nhttps://www.joyclub.de/event/111.a.html",
+    )
+    await hass.async_block_till_done()
+
+
+async def test_preview_then_retitle_imported(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    _decorate(joy)
+    target = await _target(hass, tmp_path)
+    await _import_old(hass, target, joy, "\U0001d5e3\U0001d5ee\U0001d5ff\U0001d601\U0001d606 A HÜ\U0001f389")
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Hauke", unique_id="4711", data={CONF_SSOAUTOID: "abc"}, options={CONF_TARGET: target}
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Own calendar shows the readable title (default list: HÜ -> H Ü)
+    state = hass.states.get("calendar.joyclub_hauke_events")
+    assert state.attributes["message"] == "Party A H Ü"
+
+    # Sync still off: preview lists what would happen, nothing changes
+    resp = await hass.services.async_call(DOMAIN, "preview", {}, blocking=True, return_response=True)
+    kinds = {(a["action"], a["event_id"]) for a in resp["actions"]}
+    assert kinds == {("retitle", "111"), ("create", "222")}
+    assert [e.summary for e in await _events(hass, target)] == [
+        "\U0001d5e3\U0001d5ee\U0001d5ff\U0001d601\U0001d606 A HÜ\U0001f389"
+    ]
+    assert hass.data[DOMAIN]["sync"].created == {}
+
+    hass.config_entries.async_update_entry(entry, options={CONF_SYNC: True, CONF_TARGET: target})
+    await hass.async_block_till_done()
+    await _sync(hass)
+    items = {e.summary: e for e in await _events(hass, target)}
+    assert set(items) == {"Party A H Ü", "Party B"}
+    a = items["Party A H Ü"]
+    assert (dt_util.as_local(a.end) - dt_util.as_local(a.start)) == timedelta(hours=8)  # end kept
+    assert a.description.startswith("Gekürzt")  # imported text kept
+    assert items["Party B"].description.endswith("https://www.joyclub.de/event/222.b.html")
+
+    # The user renames it by hand: not changed back
+    ent = hass.data[DATA_COMPONENT].get_entity(target)
+    await ent.async_update_event(
+        a.uid, {"summary": "Meine Party", "dtstart": a.start, "dtend": a.end, "description": a.description}
+    )
+    await _sync(hass)
+    assert "Meine Party" in {e.summary for e in await _events(hass, target)}
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_description_option(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    _decorate(joy)
+    target = await _target(hass, tmp_path)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hauke",
+        unique_id="4711",
+        data={CONF_SSOAUTOID: "abc"},
+        options={CONF_SYNC: True, CONF_TARGET: target, CONF_DESCRIPTION: DESCRIPTION_FULL, CONF_CLEAN_TITLE: False},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _sync(hass)
+    a = next(e for e in await _events(hass, target) if "A" in e.summary)
+    assert a.summary == "\U0001d5e3\U0001d5ee\U0001d5ff\U0001d601\U0001d606 A HÜ\U0001f389"  # cleaning switched off
+    assert "Der ganze lange Text" in a.description
+    assert a.description.endswith("https://www.joyclub.de/event/111.a.html")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+class FakeGoogle:
+    """Stands in for GoogleTarget; the events themselves live in the local test calendar."""
+
+    def __init__(self, guests: list[str], fail_patch: bool = False) -> None:
+        self.guests = guests
+        self.fail_patch = fail_patch
+        self.calls: list[tuple] = []
+
+    async def find(self, uid: str) -> dict:
+        return {
+            "id": f"g-{uid}",
+            "attendees": [{"email": "hauke@example.com", "self": True}] + [{"email": g} for g in self.guests],
+            "start": {"dateTime": "x"},
+            "end": {"dateTime": "y"},
+            "reminders": {"useDefault": False},
+        }
+
+    async def patch(self, event_id: str, body: dict, *, notify: bool) -> None:
+        if self.fail_patch:
+            raise GoogleError("nope")
+        self.calls.append(("patch", event_id, body, notify))
+
+    async def create(self, **kwargs) -> None:
+        self.calls.append(("create", kwargs))
+
+    async def delete(self, event_id: str, *, notify: bool) -> None:
+        self.calls.append(("delete", event_id, notify))
+
+    async def async_refresh(self) -> None:
+        self.calls.append(("refresh",))
+
+
+async def _google_setup(hass, joy, tmp_path, google: FakeGoogle, **options):
+    _decorate(joy)
+    target = await _target(hass, tmp_path)
+    await _import_old(hass, target, joy, "Alter Titel")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hauke",
+        unique_id="4711",
+        data={CONF_SSOAUTOID: "abc"},
+        options={CONF_SYNC: True, CONF_TARGET: target, **options},
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.joyclub.sync.google_target", return_value=google):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        await _sync(hass)
+    return entry, target
+
+
+async def test_google_retitle_without_notification_and_invite(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    google = FakeGoogle(guests=["silvia@example.com"])
+    entry, _ = await _google_setup(hass, joy, tmp_path, google, **{CONF_INVITE: ["hauke@example.com"]})
+    patches = [c for c in google.calls if c[0] == "patch"]
+    assert len(patches) == 1 and patches[0][2] == {"summary": "Party A H Ü"} and patches[0][3] is False
+    creates = [c[1] for c in google.calls if c[0] == "create"]
+    assert len(creates) == 1  # Party B, with the invitation, Google notifies
+    assert creates[0]["summary"] == "Party B" and creates[0]["attendees"] == ["hauke@example.com"]
+    assert creates[0]["notify"] is True
+    assert not [c for c in google.calls if c[0] == "delete"]  # nothing deleted and recreated
+    assert ("refresh",) in google.calls
+
+    # Deregistered from A: deleted with notification of the guests
+    hass.config_entries.async_update_entry(entry, options={**entry.options, CONF_CANCELLED: MODE_YES})
+    await hass.async_block_till_done()
+    joy.events.pop("111")
+    google.calls.clear()
+    with patch("custom_components.joyclub.sync.google_target", return_value=google):
+        await entry.runtime_data.events.async_refresh()
+        await _sync(hass)
+    deletes = [c for c in google.calls if c[0] == "delete"]
+    assert len(deletes) == 1 and deletes[0][2] is True
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_google_patch_fails_with_guests_left_alone(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    google = FakeGoogle(guests=["silvia@example.com"], fail_patch=True)
+    entry, target = await _google_setup(hass, joy, tmp_path, google)
+    assert not [c for c in google.calls if c[0] in ("delete", "create")]  # no invitations: created the normal way
+    assert {e.summary for e in await _events(hass, target)} == {"Alter Titel", "Party B"}
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_google_patch_fails_without_guests_recreated(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    google = FakeGoogle(guests=[], fail_patch=True)
+    entry, _ = await _google_setup(hass, joy, tmp_path, google)
+    old = await google.find("x")
+    recreated = [c[1] for c in google.calls if c[0] == "create" and c[1].get("raw")]
+    assert len(recreated) == 1 and recreated[0]["summary"] == "Party A H Ü" and recreated[0]["notify"] is False
+    assert recreated[0]["raw"]["reminders"] == old["reminders"]  # reminders kept
+    deletes = [c for c in google.calls if c[0] == "delete"]
+    assert len(deletes) == 1 and deletes[0][2] is False
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_google_target_requests() -> None:
+    """Parameters that reach the Calendar API."""
+
+    class Resp:
+        def __init__(self, status: int, data: dict | None = None) -> None:
+            self.status, self._data = status, data
+
+        async def json(self):
+            return self._data
+
+        async def text(self):
+            return "err"
+
+    class Auth:
+        def __init__(self) -> None:
+            self.calls: list = []
+
+        async def request(self, method, url, **kwargs):
+            self.calls.append((method, url, kwargs))
+            if method == "get":
+                return Resp(200, {"items": [{"id": "e1", "status": "confirmed"}]})
+            return Resp(204 if method == "delete" else 200, {})
+
+    auth = Auth()
+    g = GoogleTarget(object(), auth, "abc@group.calendar.google.com")
+    assert (await g.find("uid1"))["id"] == "e1"
+    await g.patch("e1", {"summary": "S"}, notify=False)
+    await g.delete("e1", notify=True)
+    start = dt_util.now()
+    await g.create(summary="N", start=start, end=start + timedelta(hours=6), attendees=["a@b.de"], notify=True)
+    _, url, kw = auth.calls[0]
+    assert url == "calendars/abc%40group.calendar.google.com/events" and kw["params"]["iCalUID"] == "uid1"
+    assert auth.calls[1][0] == "patch" and auth.calls[1][2]["params"] == {"sendUpdates": "none"}
+    assert auth.calls[1][1].endswith("/events/e1")
+    assert auth.calls[2][0] == "delete" and auth.calls[2][2]["params"] == {"sendUpdates": "all"}
+    body = auth.calls[3][2]["json"]
+    assert body["attendees"] == [{"email": "a@b.de"}] and body["start"]["timeZone"]
+    assert auth.calls[3][2]["params"] == {"sendUpdates": "all"}
+
+
+async def test_cookie_file(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    """Setup with a path; a renewed file is read again when JOYclub rejects the cookie."""
+    old = "11111111-1111-4111-8111-111111111111"
+    new = "22222222-2222-4222-8222-222222222222"
+    f = tmp_path / "cookies.json"
+    f.write_text(f'[{{"name": "SSOAUTOID", "value": "{old}", "domain": ".identity.joyclub.com"}}]')
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: str(tmp_path / "fehlt.json")}
+    )
+    assert result["errors"] == {CONF_SSOAUTOID: "cookie_file"}
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"name": "Hauke", CONF_SSOAUTOID: str(f)}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SSOAUTOID] == old and result["data"][CONF_COOKIE_FILE] == str(f)
+    entry = result["result"]
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    # Cookie renewed outside (file rewritten); JOYclub no longer takes the old one
+    f.write_text(f".identity.joyclub.com\tTRUE\t/\tTRUE\t1826589975\tSSOAUTOID\t{new}\n")
+    joy.valid = {new}
+    client = entry.runtime_data.client
+    await client.login()
+    assert client.ssoautoid == new
+    await entry.runtime_data.clubmail.async_refresh()
+    await hass.async_block_till_done()
+    assert entry.data[CONF_SSOAUTOID] == new  # remembered, without a reload
+    assert entry.state is ConfigEntryState.LOADED
+
+    # File not renewed: rejected as before (reauth)
+    joy.valid = {"33333333-3333-4333-8333-333333333333"}
+    with pytest.raises(JoyclubAuthError):
+        await client.login()
+    assert await hass.config_entries.async_unload(entry.entry_id)

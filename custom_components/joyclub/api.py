@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -41,9 +42,17 @@ def _is_challenge(status: int, text: str) -> bool:
 class JoyclubClient:
     """One JOYclub account."""
 
-    def __init__(self, session: aiohttp.ClientSession, ssoautoid: str, flaresolverr: str | None = None) -> None:
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        ssoautoid: str,
+        flaresolverr: str | None = None,
+        cookie_reader: Callable[[], Awaitable[str | None]] | None = None,
+    ) -> None:
         self._session = session
         self._ssoautoid = ssoautoid
+        # Reads the cookie again (from a file) when JOYclub rejects the current one
+        self._cookie_reader = cookie_reader
         self._flaresolverr = (flaresolverr or "").rstrip("/") or None
         self._user_agent = USER_AGENT
         self._lock = asyncio.Lock()
@@ -95,7 +104,26 @@ class JoyclubClient:
             )
         _LOGGER.debug("Cloudflare challenge solved by FlareSolverr")
 
+    @property
+    def ssoautoid(self) -> str:
+        return self._ssoautoid
+
     async def login(self) -> None:
+        """Log in; if the cookie is rejected and it comes from a file, read the file again once."""
+        try:
+            await self._login_once()
+        except JoyclubAuthError:
+            if self._cookie_reader is None:
+                raise
+            new = await self._cookie_reader()
+            if not new or new == self._ssoautoid:
+                raise
+            _LOGGER.info("JOYclub cookie renewed from the cookie file")
+            self._ssoautoid = new
+            self._set_sso_cookie()
+            await self._login_once()
+
+    async def _login_once(self) -> None:
         """OAuth flow of the website; SSOAUTOID makes identity.joyclub.com issue a code without password."""
         status, url, _ = await self._request("GET", BASE + "/webauth/login/")
         query = dict(parse_qsl(urlsplit(url).query))
@@ -190,11 +218,27 @@ class JoyclubClient:
     async def event_details(self, card: parser.Card) -> parser.EventDetails:
         """Start, location and coordinates from the iCal file, description and status from the event page."""
         details = parser.EventDetails()
-        page = await self._get_page(card.url or f"{BASE}/event/{card.event_id}.html")
-        status, _, ics = await self._request("GET", ICS.format(id=card.event_id))
+        page_error: JoyclubError | None = None
+        try:
+            page = await self._get_page(card.url or f"{BASE}/event/{card.event_id}.html")
+        except JoyclubAuthError:
+            raise
+        except JoyclubError as err:  # the iCal file alone still gives title, start and a shortened text
+            page, page_error = "", err
+        try:
+            status, _, ics = await self._request("GET", ICS.format(id=card.event_id))
+        except JoyclubError:
+            if page_error is not None:
+                raise
+            status, ics = 0, ""
         if status == 200 and "BEGIN:VEVENT" in ics:
             parser.parse_ics(ics, details)  # structured start/location/coordinates first
-        parser.parse_event_page(page, details)
+        elif page_error is not None:
+            raise page_error
+        if page:
+            parser.parse_event_page(page, details)
+        else:
+            details.description = details.ics_description
         return details
 
     async def refresh_clubmail(self) -> dict | None:

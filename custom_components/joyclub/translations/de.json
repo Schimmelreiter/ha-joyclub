@@ -11,7 +11,7 @@
         },
         "data_description": {
           "flaresolverr": "z. B. http://127.0.0.1:8191 – nur genutzt, wenn Cloudflare einen Abruf sperrt.",
-          "ssoautoid": "JSON-Export eines Cookie-Editors, eine cookies.txt oder nur der Wert von SSOAUTOID."
+          "ssoautoid": "JSON-Export eines Cookie-Editors, eine cookies.txt, nur der Wert von SSOAUTOID – oder der Pfad zu so einer Datei (z. B. /config/joyclub/cookies.json). Bei einem Pfad wird die Datei neu gelesen, sobald JOYclub das Cookie ablehnt; so lässt sie sich automatisch erneuern."
         }
       },
       "reauth_confirm": {
@@ -19,13 +19,17 @@
         "description": "JOYclub akzeptiert die Anmeldung von **{name}** nicht mehr. Im Browser neu mit „Angemeldet bleiben“ einloggen und die Cookies von joyclub.com einfügen.",
         "data": {
           "ssoautoid": "Cookies von joyclub.com"
+        },
+        "data_description": {
+          "ssoautoid": "JSON-Export eines Cookie-Editors, eine cookies.txt, nur der Wert von SSOAUTOID – oder der Pfad zu so einer Datei (z. B. /config/joyclub/cookies.json). Bei einem Pfad wird die Datei neu gelesen, sobald JOYclub das Cookie ablehnt; so lässt sie sich automatisch erneuern."
         }
       }
     },
     "error": {
       "invalid_auth": "JOYclub akzeptiert diese Anmeldung nicht mehr – im Browser neu mit „Angemeldet bleiben“ einloggen und die Cookies erneut exportieren.",
       "cannot_connect": "JOYclub nicht erreichbar.",
-      "no_cookie": "Kein SSOAUTOID gefunden. Die Cookies mit Filter auf joyclub.com exportieren (das Cookie gehört zu identity.joyclub.com)."
+      "no_cookie": "Kein SSOAUTOID gefunden. Die Cookies mit Filter auf joyclub.com exportieren (das Cookie gehört zu identity.joyclub.com).",
+      "cookie_file": "Diese Cookie-Datei lässt sich nicht lesen oder enthält kein SSOAUTOID."
     },
     "abort": {
       "already_configured": "Dieses Konto ist schon eingerichtet.",
@@ -46,16 +50,25 @@
           "default_hours": "Dauer, wenn kein Ende bekannt ist",
           "scan_hours": "Anmeldungen prüfen alle",
           "clubmail_minutes": "ClubMails prüfen alle",
-          "flaresolverr": "FlareSolverr-Adresse (optional)"
+          "flaresolverr": "FlareSolverr-Adresse (optional)",
+          "invite": "Zu neuen Partys einladen",
+          "description": "Beschreibung",
+          "clean_title": "Lesbare Titel",
+          "abbreviations": "Abkürzungen"
         },
         "data_description": {
           "target_calendar": "Muss Termine anlegen können (z. B. Google-Kalender). Dort schon vorhandene Termine (mit JOYclub-Link) werden nicht doppelt angelegt.",
-          "default_hours": "Gilt, wenn weder die Beschreibung („bis 03.00 Uhr“, „Partyende 2:00 Uhr“) noch eine gelernte Regel das Ende nennt. Korrigiere das Ende einmal im Zielkalender – es wird für diese Party an diesem Ort gelernt."
+          "default_hours": "Gilt, wenn weder die Beschreibung („bis 03.00 Uhr“, „Partyende 2:00 Uhr“) noch eine gelernte Regel das Ende nennt. Korrigiere das Ende einmal im Zielkalender – es wird für diese Party an diesem Ort gelernt.",
+          "invite": "E-Mail-Adressen, die für jeden neuen Termin eine Einladung von Google bekommen (nur mit einem Google-Kalender als Ziel). Gäste bestehender Termine werden nie verändert.",
+          "description": "Gekürzt wie bei „In Kalender übernehmen“ in JOYclub oder der vollständige Text des Veranstalters. Der JOYclub-Link steht immer drin.",
+          "clean_title": "Schmuckbuchstaben (𝗡𝗢, Ⓐ, ᴀʙᴄ, ähnlich aussehende Buchstaben anderer Alphabete) werden zu normalen, Emojis entfallen. Gilt auch für Termine, die schon im Zielkalender stehen: Nur der Titel wird geändert, Gäste werden nicht benachrichtigt.",
+          "abbreviations": "Eine pro Zeile: Abkürzung=Ersatz. „HÜ=H Ü“ lässt Sprachassistenten die Buchstaben einzeln sprechen. Nur mit lesbaren Titeln."
         }
       }
     },
     "error": {
-      "target_required": "Bitte einen Zielkalender wählen."
+      "target_required": "Bitte einen Zielkalender wählen.",
+      "invalid_email": "Ungültige E-Mail-Adresse."
     }
   },
   "selector": {
@@ -64,6 +77,12 @@
         "yes": "Ja",
         "no": "Nein",
         "ask": "Nachfragen (Ereignis, Antwort mit joyclub.answer)"
+      }
+    },
+    "description": {
+      "options": {
+        "short": "Wie bei „In Kalender übernehmen“ (gekürzt)",
+        "full": "Vollständiger Text"
       }
     }
   },
@@ -86,6 +105,10 @@
     "refresh": {
       "name": "Aktualisieren",
       "description": "Anmeldungen aller Konten jetzt lesen und die Kalender abgleichen."
+    },
+    "preview": {
+      "name": "Vorschau",
+      "description": "Was der nächste Kalender-Abgleich tun würde (anlegen, Titel ändern, löschen), ohne etwas zu ändern. Auch für Konten mit Zielkalender, deren Abgleich noch aus ist."
     },
     "answer": {
       "name": "Antworten",
