@@ -78,6 +78,7 @@ class FakeJoy:
         }
         self.auth_ok = True
         self.valid: set[str] | None = None  # accepted SSOAUTOID values (None: any)
+        self.club_calls: list[str] = []
 
     async def login(self, client) -> None:
         if not self.auth_ok or (self.valid is not None and client.ssoautoid not in self.valid):
@@ -94,6 +95,10 @@ class FakeJoy:
     async def clubmail(self, client):
         return client.clubmail
 
+    async def club_hours(self, client, url):
+        self.club_calls.append(url)
+        return {d: ("20:00", "03:00") for d in range(7)}
+
 
 @pytest.fixture
 def joy():
@@ -103,6 +108,7 @@ def joy():
         patch("custom_components.joyclub.api.JoyclubClient.registrations", lambda c: fake.registrations(c)),
         patch("custom_components.joyclub.api.JoyclubClient.event_details", lambda c, card: fake.details(c, card)),
         patch("custom_components.joyclub.api.JoyclubClient.refresh_clubmail", lambda c: fake.clubmail(c)),
+        patch("custom_components.joyclub.api.JoyclubClient.club_hours", lambda c, url: fake.club_hours(c, url)),
     ):
         yield fake
 
@@ -479,4 +485,32 @@ async def test_cookie_file(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
     joy.valid = {"33333333-3333-4333-8333-333333333333"}
     with pytest.raises(JoyclubAuthError):
         await client.login()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_end_from_club_opening_hours(hass: HomeAssistant, joy: FakeJoy, tmp_path) -> None:
+    """No end in the text: the club's closing time on that weekday; one request per club."""
+    _, d = joy.events["222"]
+    d.club_url = "https://www.joyclub.de/club/9294867.club_o6.html"
+    _, a = joy.events["111"]
+    a.club_url = d.club_url
+    target = await _target(hass, tmp_path)
+    guessed = async_capture_events(hass, EVENT_END_GUESSED)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hauke",
+        unique_id="4711",
+        data={CONF_SSOAUTOID: "abc"},
+        options={CONF_SYNC: True, CONF_TARGET: target},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    events = entry.runtime_data.events.data
+    assert events["222"].end_source == "opening_hours"
+    assert events["222"].end.astimezone(TZ).strftime("%H:%M") == "03:00"
+    assert events["111"].end_source == "description"  # the text wins
+    assert joy.club_calls == [d.club_url]  # cached
+    await _sync(hass)
+    assert [g.data["event_id"] for g in guessed] == ["222"]
     assert await hass.config_entries.async_unload(entry.entry_id)

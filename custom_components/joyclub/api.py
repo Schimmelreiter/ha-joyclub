@@ -241,6 +241,10 @@ class JoyclubClient:
             details.description = details.ics_description
         return details
 
+    async def club_hours(self, url: str) -> dict[int, tuple[str, str]]:
+        """Regular opening hours from a club profile."""
+        return parser.opening_hours(await self._get_page(url))
+
     async def refresh_clubmail(self) -> dict | None:
         """Unread ClubMails (from the navigation of a light page)."""
         await self._get_page(BASE + "/my_joy/feed/friends/")

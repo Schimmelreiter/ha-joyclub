@@ -62,16 +62,16 @@ def parse_registration_cards(page: str) -> list[Card]:
             card.day = date(int(dm.group(3)), int(dm.group(2)), int(dm.group(1)))
         if not card.url and (lm := re.search(r'href="(https://www\.joyclub\.de/event/\d+[^"]*)"', body)):
             card.url = html_lib.unescape(lm.group(1))
-        if not card.title and (hm := re.search(r"card-ui-information-headline[^>]*>(.*?)</", body, re.S)):
+        if not card.title and (hm := re.search(r"card-ui-information-headline[^>]*>(.*?)</", body, re.DOTALL)):
             card.title = _text(hm.group(1))
-        if not card.city and (cm := re.search(r'class="location[^"]*"[^>]*>(.*?)</', body, re.S)):
+        if not card.city and (cm := re.search(r'class="location[^"]*"[^>]*>(.*?)</', body, re.DOTALL)):
             card.city = _text(cm.group(1))
-        buttons = [_text(b).lower() for b in re.findall(r"<j-button[^>]*>(.*?)</j-button>", body, re.S)]
+        buttons = [_text(b).lower() for b in re.findall(r"<j-button[^>]*>(.*?)</j-button>", body, re.DOTALL)]
         if any("warteliste" in b for b in buttons):
             card.status = STATUS_WAITLIST
         elif any(b == "angemeldet" for b in buttons):
             card.status = card.status if card.status == STATUS_WAITLIST else STATUS_REGISTERED
-        elif not card.status and (bm := re.search(r"event_bookmark_btn[^>]*>(.*?)</j-button>", body, re.S)):
+        elif not card.status and (bm := re.search(r"event_bookmark_btn[^>]*>(.*?)</j-button>", body, re.DOTALL)):
             if "gemerkt" in _text(bm.group(1)).lower():
                 card.status = STATUS_BOOKMARKED
     return list(cards.values())
@@ -161,6 +161,7 @@ class EventDetails:
     longitude: float | None = None
     description: str = ""
     ics_description: str = ""
+    club_url: str = ""
     status: str = ""
     extra: dict = field(default_factory=dict)
 
@@ -221,7 +222,7 @@ def parse_ics(text: str, details: EventDetails | None = None) -> EventDetails:
 def parse_event_page(page: str, details: EventDetails | None = None) -> EventDetails:
     """Structured data, description and own registration status of an event page."""
     d = details or EventDetails()
-    for m in re.finditer(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", page, re.S):
+    for m in re.finditer(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", page, re.DOTALL):
         try:
             ld = json.loads(m.group(1))
         except ValueError:
@@ -248,17 +249,18 @@ def parse_event_page(page: str, details: EventDetails | None = None) -> EventDet
             d.description = (ld.get("description") or "").strip()
         break
     # Full description text of the page (the structured one is shortened)
-    body = re.search(r'<div[^>]*class="[^"]*event_detail_text[^"]*"[^>]*>(.*?)</div>\s*</div>', page, re.S)
+    body = re.search(r'<div[^>]*class="[^"]*event_detail_text[^"]*"[^>]*>(.*?)</div>\s*</div>', page, re.DOTALL)
     full = _text(re.sub(r"<br\s*/?>", "\n", body.group(1))) if body else ""
     if len(full) > len(d.description):
         d.description = full
     d.extra["page_text"] = _text(re.sub(r"<br\s*/?>", "\n", page))
     if not d.description:
         d.description = d.extra["page_text"]
-    box = re.search(r"event_registration_buttons(.*?)(?:</form>|</section>)", page, re.S)
+    d.club_url = d.club_url or club_url(page)
+    box = re.search(r"event_registration_buttons(.*?)(?:</form>|</section>)", page, re.DOTALL)
     if box:
-        main = re.search(r"<j-button[^>]*link_to_tab[^>]*>(.*?)</j-button>", box.group(1), re.S)
-        bm = re.search(r"<j-button[^>]*js_submit_bookmark_form[^>]*>(.*?)</j-button>", box.group(1), re.S)
+        main = re.search(r"<j-button[^>]*link_to_tab[^>]*>(.*?)</j-button>", box.group(1), re.DOTALL)
+        bm = re.search(r"<j-button[^>]*js_submit_bookmark_form[^>]*>(.*?)</j-button>", box.group(1), re.DOTALL)
         mt = _text(main.group(1)).lower() if main else ""
         if "warteliste" in mt:
             d.status = STATUS_WAITLIST
@@ -267,6 +269,62 @@ def parse_event_page(page: str, details: EventDetails | None = None) -> EventDet
         elif bm and "gemerkt" in _text(bm.group(1)).lower():
             d.status = STATUS_BOOKMARKED
     return d
+
+
+def club_url(page: str) -> str:
+    """Profile of the club where the event takes place (the location, not the organiser).
+
+    The page links it as "event_club". The structured data's location url often points to the
+    organiser's profile (/party/...), so it is only used if it is a club profile.
+    """
+    if m := re.search(r'<a[^>]+href="(https://www\.joyclub\.de/club/\d+[^"#]*)"[^>]*class="[^"]*event_club', page):
+        return html_lib.unescape(m.group(1))
+    if m := re.search(
+        r'<a[^>]+class="[^"]*event_club[^"]*"[^>]*href="(https://www\.joyclub\.de/club/\d+[^"#]*)"', page
+    ):
+        return html_lib.unescape(m.group(1))
+    for m in re.finditer(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", page, re.DOTALL):
+        try:
+            ld = json.loads(m.group(1))
+        except ValueError:
+            continue
+        if isinstance(ld, dict) and ld.get("@type") == "Event":
+            url = ((ld.get("location") or {}).get("url") or "").strip()
+            if re.match(r"https://www\.joyclub\.de/club/\d+", url):
+                return url
+    return ""
+
+
+_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def opening_hours(page: str) -> dict[int, tuple[str, str]]:
+    """Regular opening hours of a club profile: weekday (0 = Monday) -> ("20:00", "03:00")."""
+    hours: dict[int, tuple[str, str]] = {}
+    for m in re.finditer(r"<script[^>]*application/ld\+json[^>]*>(.*?)</script>", page, re.DOTALL):
+        try:
+            ld = json.loads(m.group(1))
+        except ValueError:
+            continue
+        for spec in (ld.get("openingHoursSpecification") or []) if isinstance(ld, dict) else []:
+            days = spec.get("dayOfWeek")
+            for day in days if isinstance(days, list) else [days]:
+                name = str(day or "").rsplit("/", 1)[-1]
+                if name in _WEEKDAYS and spec.get("opens") and spec.get("closes"):
+                    hours[_WEEKDAYS.index(name)] = (str(spec["opens"]), str(spec["closes"]))
+    return hours
+
+
+def end_from_opening_hours(hours: dict[int, tuple[str, str]], start: datetime) -> datetime | None:
+    """Closing time of the club on the weekday the event starts, if plausible."""
+    day = hours.get(start.weekday())
+    if not day:
+        return None
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", day[1].strip())
+    if not m or (t := _hm(m.group(1), m.group(2))) is None:
+        return None
+    end = end_after(start, t)
+    return end if _plausible(start, end) else None
 
 
 # ---------------------------------------------------------------- end time

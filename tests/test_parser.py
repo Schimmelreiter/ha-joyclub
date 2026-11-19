@@ -171,3 +171,36 @@ def test_cookie_file_path() -> None:
     assert parser.cookie_file_path(" /config/joyclub/cookies.json ") == "/config/joyclub/cookies.json"
     assert parser.cookie_file_path('[{"name": "SSOAUTOID"}]') is None
     assert parser.cookie_file_path("/a\n/b") is None
+
+
+CLUB_PAGE = """<script type="application/ld+json">{"@type":"NightClub","name":"Club O6",
+"openingHoursSpecification":[{"@type":"OpeningHoursSpecification","opens":"20:00","closes":"03:00","dayOfWeek":"https://schema.org/Friday"},
+{"@type":"OpeningHoursSpecification","opens":"20:00","closes":"03:00","dayOfWeek":"https://schema.org/Saturday"},
+{"@type":"OpeningHoursSpecification","opens":"15:00","closes":"22:00","dayOfWeek":"https://schema.org/Sunday"}]}</script>"""
+
+
+def test_club_url_location_not_organiser() -> None:
+    page = """<script type="application/ld+json">{"@type":"Event","name":"Drecksau","startDate":"2027-01-29T20:00:00+01:00",
+    "location":{"@type":"Place","name":"Club O6","url":"https:\\/\\/www.joyclub.de\\/party\\/3291521.badgirl_events.html"},
+    "organizer":{"@type":"Organization","name":"Club O6","url":"https:\\/\\/www.joyclub.de\\/party\\/3291521.badgirl_events.html"}}</script>
+    <a href="https://www.joyclub.de/party/3291521.badgirl_events.html">BadGirl Events</a>
+    <a href="https://www.joyclub.de/club/9294867.club_o6.html" class="event_club">Club O6</a>"""
+    assert parser.parse_event_page(page).club_url == "https://www.joyclub.de/club/9294867.club_o6.html"
+    # Only the structured data, pointing to a club: used
+    ld_only = """<script type="application/ld+json">{"@type":"Event","name":"X",
+    "location":{"@type":"Place","name":"Faro 8","url":"https:\\/\\/www.joyclub.de\\/club\\/2030474.faro_8.html"}}</script>"""
+    assert parser.club_url(ld_only) == "https://www.joyclub.de/club/2030474.faro_8.html"
+    # Organiser only ("In einer anderen Location"): no club
+    assert parser.club_url(page.split("<a href")[0]) == ""
+
+
+def test_opening_hours() -> None:
+    hours = parser.opening_hours(CLUB_PAGE)
+    assert hours == {4: ("20:00", "03:00"), 5: ("20:00", "03:00"), 6: ("15:00", "22:00")}
+    fri = datetime(2027, 1, 29, 20, 0, tzinfo=TZ)
+    assert parser.end_from_opening_hours(hours, fri) == datetime(2027, 1, 30, 3, 0, tzinfo=TZ)
+    sat_early = datetime(2026, 12, 26, 16, 0, tzinfo=TZ)  # 11 h until 03:00: still plausible
+    assert parser.end_from_opening_hours(hours, sat_early) == datetime(2026, 12, 27, 3, 0, tzinfo=TZ)
+    thu = datetime(2026, 12, 31, 19, 0, tzinfo=TZ)
+    assert parser.end_from_opening_hours(hours, thu) is None  # closed on Thursdays
+    assert parser.end_from_opening_hours({}, fri) is None

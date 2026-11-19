@@ -11,7 +11,8 @@ for unread ClubMails. Several accounts (e.g. both partners) are supported.
 JOYclub's own *Add to calendar* file always ends a party at its start (DTEND = DTSTART), so
 calendars show it without duration. This integration takes the end from the organiser's
 description (a time range such as 19.30–03.00 or a stated end of the party), from an end time
-you corrected once, or else uses a default duration and tells you.
+you corrected once, from the club's regular opening hours on that weekday, or else uses a
+default duration – and tells you when the end is only an estimate.
 
 ## Installation
 
@@ -99,7 +100,7 @@ events are left unchanged (logged).
 | Event | When |
 | --- | --- |
 | `joyclub_event_created` | An event was added to the target calendar. |
-| `joyclub_end_time_guessed` | Added with the default duration – correct it once to teach the end. |
+| `joyclub_end_time_guessed` | Added with the end from the club's opening hours or the default duration – correct it once to teach the end. |
 | `joyclub_end_time_learned` | A corrected end was learned (`learned_end`). |
 | `joyclub_bookmarked_pending` | “Ask” for bookmarked events: answer with `joyclub.answer`. |
 | `joyclub_cancelled_pending` | “Ask” for deregistered events: answer with `joyclub.answer`. |
@@ -131,8 +132,9 @@ Example: a notification with buttons for `joyclub_end_time_guessed` or
 - *My event registrations*: `/dates_partys/events/registrations/` and the following pages from
   `/dates_partys/dates_partys_scroll_data`.
 - Per event (cached for a day): the *Add to calendar* file (title, start, address, coordinates,
-  shortened description) and the event page (full description, own status). If the page cannot
-  be read, the file alone is used.
+  shortened description) and the event page (full description, own status, the club where it
+  takes place). If the page cannot be read, the file alone is used.
+- Per club (cached for a week): the regular opening hours from the club profile.
 - ClubMails: the counter in the page navigation.
 
 Read only – the integration never registers, deregisters or writes anything on JOYclub.

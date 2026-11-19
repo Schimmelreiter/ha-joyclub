@@ -36,7 +36,7 @@ from .const import (
     STORE_KEY,
     STORE_VERSION,
 )
-from .coordinator import END_DEFAULT
+from .coordinator import END_CLUB, END_DEFAULT
 from .entity import suffix
 from .google import GoogleError, GoogleTarget, google_target
 
@@ -256,7 +256,7 @@ class CalendarSync:
                 "summary": summary,
             }
             self._fire(EVENT_CREATED, entry, ev, target=target)
-            if ev.end_source == END_DEFAULT:
+            if ev.end_source in (END_DEFAULT, END_CLUB):
                 self._fire(EVENT_END_GUESSED, entry, ev, target=target)
 
         # Events created by us that no account has any more (cancelled) - only if every account answered

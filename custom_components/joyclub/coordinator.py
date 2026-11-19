@@ -33,9 +33,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 DETAILS_MAX_AGE = timedelta(hours=24)
+CLUB_MAX_AGE = timedelta(days=7)
 
 END_DESCRIPTION = "description"
 END_RULE = "rule"
+END_CLUB = "opening_hours"
 END_DEFAULT = "default"
 
 
@@ -79,6 +81,7 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
         )
         self.client = client
         self._cache: dict[str, _Cached] = {}
+        self._clubs: dict[str, tuple[dict[int, tuple[str, str]], datetime]] = {}
 
     def _end_rule(self, key: str) -> str | None:
         sync = self.hass.data.get(DOMAIN, {}).get("sync")
@@ -103,7 +106,8 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
                         if cached is None:
                             continue
                     self._cache[card.event_id] = cached
-                ev = self._build(card, cached.details)
+                hours = await self._club_hours(cached.details.club_url)
+                ev = self._build(card, cached.details, hours)
                 if ev and ev.end >= now:
                     events[ev.event_id] = ev
             self._cache = {k: v for k, v in self._cache.items() if k in {c.event_id for c in cards}}
@@ -113,7 +117,26 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
         except JoyclubError as err:
             raise UpdateFailed(str(err)) from err
 
-    def _build(self, card: parser.Card, d: parser.EventDetails) -> JoyEvent | None:
+    async def _club_hours(self, url: str) -> dict[int, tuple[str, str]]:
+        """Opening hours of the club (cached for a week; on errors the last known ones or none)."""
+        if not url:
+            return {}
+        cached = self._clubs.get(url)
+        if cached and dt_util.utcnow() - cached[1] < CLUB_MAX_AGE:
+            return cached[0]
+        try:
+            hours = await self.client.club_hours(url)
+        except JoyclubAuthError:
+            raise
+        except JoyclubError as err:
+            _LOGGER.debug("Club %s: %s", url, err)
+            return cached[0] if cached else {}
+        self._clubs[url] = (hours, dt_util.utcnow())
+        return hours
+
+    def _build(
+        self, card: parser.Card, d: parser.EventDetails, hours: dict[int, tuple[str, str]] | None = None
+    ) -> JoyEvent | None:
         start = d.start
         if start is None:
             return None
@@ -130,6 +153,8 @@ class EventsCoordinator(DataUpdateCoordinator[dict[str, JoyEvent]]):
             h, m = (int(x) for x in rule.split(":"))
             end = parser.end_after(start, time(h, m))
             source = END_RULE
+        if end is None and (end := parser.end_from_opening_hours(hours or {}, start)):
+            source = END_CLUB
         if end is None:
             end = start + timedelta(hours=self.config_entry.options.get(CONF_DEFAULT_HOURS, DEFAULT_DEFAULT_HOURS))
             source = END_DEFAULT
