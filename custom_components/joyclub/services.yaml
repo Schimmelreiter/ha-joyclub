@@ -1,0 +1,17 @@
+refresh:
+answer:
+  fields:
+    event_id:
+      required: true
+      example: "1735481"
+      selector:
+        text:
+    answer:
+      required: true
+      selector:
+        select:
+          options:
+            - accept
+            - reject
+            - delete
+            - keep

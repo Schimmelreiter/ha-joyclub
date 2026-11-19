@@ -1,0 +1,25 @@
+{
+  "services": {
+    "refresh": {
+      "service": "mdi:refresh"
+    },
+    "answer": {
+      "service": "mdi:reply"
+    }
+  },
+  "entity": {
+    "calendar": {
+      "events": {
+        "default": "mdi:party-popper"
+      }
+    },
+    "sensor": {
+      "clubmail": {
+        "default": "mdi:email-outline"
+      },
+      "next_party": {
+        "default": "mdi:calendar-heart"
+      }
+    }
+  }
+}

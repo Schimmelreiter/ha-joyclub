@@ -1,0 +1,103 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "JOYclub account",
+        "description": "Copy the cookie **SSOAUTOID** of `identity.joyclub.com` from a browser in which you are logged in with “Stay logged in” (valid for one year). The password is not needed and not stored.",
+        "data": {
+          "name": "Name of the account",
+          "ssoautoid": "SSOAUTOID cookie",
+          "flaresolverr": "FlareSolverr URL (optional)"
+        },
+        "data_description": {
+          "flaresolverr": "e.g. http://127.0.0.1:8191 – used only if Cloudflare blocks a request."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew JOYclub cookie",
+        "description": "JOYclub no longer accepts the cookie of **{name}**. Copy a fresh SSOAUTOID from the browser.",
+        "data": {
+          "ssoautoid": "SSOAUTOID cookie"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "JOYclub does not accept this cookie (log in again with “Stay logged in” and copy SSOAUTOID).",
+      "cannot_connect": "JOYclub not reachable."
+    },
+    "abort": {
+      "already_configured": "This account is set up already.",
+      "reauth_successful": "Cookie renewed.",
+      "wrong_account": "The cookie belongs to a different account."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Calendar sync",
+        "data": {
+          "sync": "Copy events into a calendar",
+          "target_calendar": "Target calendar",
+          "waitlist": "Include waiting lists",
+          "bookmarked": "Bookmarked events",
+          "cancelled": "Delete events you deregistered from",
+          "default_hours": "Duration if no end is known",
+          "scan_hours": "Check registrations every",
+          "clubmail_minutes": "Check ClubMails every",
+          "flaresolverr": "FlareSolverr URL (optional)"
+        },
+        "data_description": {
+          "target_calendar": "Must allow creating events (e.g. Google Calendar). Events found there already (with the JOYclub link) are not added twice.",
+          "default_hours": "Used when neither the description (“bis 03.00 Uhr”, “Partyende 2:00 Uhr”) nor a learned rule gives the end. Correct the end in the target calendar once – it is learned for this party and location."
+        }
+      }
+    },
+    "error": {
+      "target_required": "Choose a target calendar."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "yes": "Yes",
+        "no": "No",
+        "ask": "Ask (event on the bus, answer with joyclub.answer)"
+      }
+    }
+  },
+  "entity": {
+    "calendar": {
+      "events": {
+        "name": "Events"
+      }
+    },
+    "sensor": {
+      "clubmail": {
+        "name": "Unread ClubMails"
+      },
+      "next_party": {
+        "name": "Next party"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Read the registrations of all accounts now and sync the calendars."
+    },
+    "answer": {
+      "name": "Answer",
+      "description": "Answer a question about a bookmarked or cancelled event.",
+      "fields": {
+        "event_id": {
+          "name": "Event id",
+          "description": "From the event (event_id)."
+        },
+        "answer": {
+          "name": "Answer",
+          "description": "accept/reject a bookmarked event, delete/keep a cancelled one."
+        }
+      }
+    }
+  }
+}

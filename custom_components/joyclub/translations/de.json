@@ -1,0 +1,103 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "JOYclub-Konto",
+        "description": "Kopiere das Cookie **SSOAUTOID** von `identity.joyclub.com` aus einem Browser, in dem du mit „Angemeldet bleiben“ eingeloggt bist (ein Jahr gültig). Das Passwort wird weder gebraucht noch gespeichert.",
+        "data": {
+          "name": "Name des Kontos",
+          "ssoautoid": "SSOAUTOID-Cookie",
+          "flaresolverr": "FlareSolverr-Adresse (optional)"
+        },
+        "data_description": {
+          "flaresolverr": "z. B. http://127.0.0.1:8191 – nur genutzt, wenn Cloudflare einen Abruf sperrt."
+        }
+      },
+      "reauth_confirm": {
+        "title": "JOYclub-Cookie erneuern",
+        "description": "JOYclub akzeptiert das Cookie von **{name}** nicht mehr. Kopiere ein frisches SSOAUTOID aus dem Browser.",
+        "data": {
+          "ssoautoid": "SSOAUTOID-Cookie"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "JOYclub akzeptiert dieses Cookie nicht (neu mit „Angemeldet bleiben“ einloggen und SSOAUTOID kopieren).",
+      "cannot_connect": "JOYclub nicht erreichbar."
+    },
+    "abort": {
+      "already_configured": "Dieses Konto ist schon eingerichtet.",
+      "reauth_successful": "Cookie erneuert.",
+      "wrong_account": "Das Cookie gehört zu einem anderen Konto."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kalender-Abgleich",
+        "data": {
+          "sync": "Termine in einen Kalender übernehmen",
+          "target_calendar": "Zielkalender",
+          "waitlist": "Wartelisten übernehmen",
+          "bookmarked": "Gemerkte übernehmen",
+          "cancelled": "Abgemeldete Termine löschen",
+          "default_hours": "Dauer, wenn kein Ende bekannt ist",
+          "scan_hours": "Anmeldungen prüfen alle",
+          "clubmail_minutes": "ClubMails prüfen alle",
+          "flaresolverr": "FlareSolverr-Adresse (optional)"
+        },
+        "data_description": {
+          "target_calendar": "Muss Termine anlegen können (z. B. Google-Kalender). Dort schon vorhandene Termine (mit JOYclub-Link) werden nicht doppelt angelegt.",
+          "default_hours": "Gilt, wenn weder die Beschreibung („bis 03.00 Uhr“, „Partyende 2:00 Uhr“) noch eine gelernte Regel das Ende nennt. Korrigiere das Ende einmal im Zielkalender – es wird für diese Party an diesem Ort gelernt."
+        }
+      }
+    },
+    "error": {
+      "target_required": "Bitte einen Zielkalender wählen."
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "yes": "Ja",
+        "no": "Nein",
+        "ask": "Nachfragen (Ereignis, Antwort mit joyclub.answer)"
+      }
+    }
+  },
+  "entity": {
+    "calendar": {
+      "events": {
+        "name": "Termine"
+      }
+    },
+    "sensor": {
+      "clubmail": {
+        "name": "Ungelesene ClubMails"
+      },
+      "next_party": {
+        "name": "Nächste Party"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Aktualisieren",
+      "description": "Anmeldungen aller Konten jetzt lesen und die Kalender abgleichen."
+    },
+    "answer": {
+      "name": "Antworten",
+      "description": "Frage zu einem gemerkten oder abgemeldeten Termin beantworten.",
+      "fields": {
+        "event_id": {
+          "name": "Event-Nummer",
+          "description": "Aus dem Ereignis (event_id)."
+        },
+        "answer": {
+          "name": "Antwort",
+          "description": "accept/reject für gemerkte, delete/keep für abgemeldete Termine."
+        }
+      }
+    }
+  }
+}
