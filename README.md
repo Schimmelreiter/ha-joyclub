@@ -1,5 +1,9 @@
 # JOYclub for Home Assistant
 
+> **Unofficial.** This integration is a private, non-commercial open-source project. It is not
+> affiliated with, endorsed, supported or authorised by JOYclub or F&P GmbH. JOYclub is a
+> trademark of its owner.
+
 Your JOYclub party registrations as a calendar in Home Assistant – and, if you like,
 copied into another calendar (e.g. Google Calendar) **with real end times**. Plus a sensor
 for unread ClubMails. Several accounts (e.g. both partners) are supported.
