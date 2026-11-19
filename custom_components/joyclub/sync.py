@@ -36,6 +36,7 @@ from .const import (
     STORE_VERSION,
 )
 from .coordinator import END_DEFAULT
+from .entity import suffix
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -183,8 +184,8 @@ class CalendarSync:
                 # Created before, gone now: the user deleted it in the calendar - do not recreate
                 record["removed_by_user"] = True
                 continue
-            summary = ev.title + (" (Warteliste)" if ev.status == parser.STATUS_WAITLIST else "")
-            description = "\n".join(p for p in (f"{MARKER} {ev.url}", f"Konto: {entry.title}") if p)
+            summary = ev.title + suffix(self.hass, ev.status)
+            description = "\n".join(p for p in (f"{MARKER} {ev.url}", f"JOYclub account: {entry.title}") if p)
             await cal.async_create_event(
                 summary=summary,
                 dtstart=ev.start,

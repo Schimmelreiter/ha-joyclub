@@ -12,17 +12,14 @@ from homeassistant.util import dt as dt_util
 
 from . import JoyclubConfigEntry
 from .coordinator import EventsCoordinator, JoyEvent
-from .entity import device_info
-from .parser import STATUS_BOOKMARKED, STATUS_WAITLIST
-
-SUFFIX = {STATUS_WAITLIST: " (Warteliste)", STATUS_BOOKMARKED: " (gemerkt)"}
+from .entity import device_info, suffix
 
 
-def _to_calendar(ev: JoyEvent) -> CalendarEvent:
+def _to_calendar(hass: HomeAssistant, ev: JoyEvent) -> CalendarEvent:
     return CalendarEvent(
         start=ev.start,
         end=ev.end,
-        summary=ev.title + SUFFIX.get(ev.status, ""),
+        summary=ev.title + suffix(hass, ev.status),
         location=ev.address or ev.location,
         description=ev.url,
         uid=f"joyclub-{ev.event_id}",
@@ -55,7 +52,7 @@ class JoyclubCalendar(CoordinatorEntity[EventsCoordinator], CalendarEntity):
         now = dt_util.now()
         for ev in self._sorted():
             if ev.end > now:
-                return _to_calendar(ev)
+                return _to_calendar(self.hass, ev)
         return None
 
     @property
@@ -75,4 +72,4 @@ class JoyclubCalendar(CoordinatorEntity[EventsCoordinator], CalendarEntity):
     async def async_get_events(
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
     ) -> list[CalendarEvent]:
-        return [_to_calendar(e) for e in self._sorted() if e.end > start_date and e.start < end_date]
+        return [_to_calendar(hass, e) for e in self._sorted() if e.end > start_date and e.start < end_date]

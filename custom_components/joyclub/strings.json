@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "JOYclub account",
-        "description": "Copy the cookie **SSOAUTOID** of `identity.joyclub.com` from a browser in which you are logged in with “Stay logged in” (valid for one year). The password is not needed and not stored.",
+        "description": "Copy the cookie **SSOAUTOID** of `identity.joyclub.com` from a browser in which you logged in with **Stay logged in** ticked (valid for one year). The password is not needed and not stored.",
         "data": {
           "name": "Name of the account",
           "ssoautoid": "SSOAUTOID cookie",
@@ -22,7 +22,7 @@
       }
     },
     "error": {
-      "invalid_auth": "JOYclub does not accept this cookie (log in again with “Stay logged in” and copy SSOAUTOID).",
+      "invalid_auth": "JOYclub does not accept this cookie (log in again with Stay logged in and copy SSOAUTOID).",
       "cannot_connect": "JOYclub not reachable."
     },
     "abort": {
@@ -48,7 +48,7 @@
         },
         "data_description": {
           "target_calendar": "Must allow creating events (e.g. Google Calendar). Events found there already (with the JOYclub link) are not added twice.",
-          "default_hours": "Used when neither the description (“bis 03.00 Uhr”, “Partyende 2:00 Uhr”) nor a learned rule gives the end. Correct the end in the target calendar once – it is learned for this party and location."
+          "default_hours": "Used when neither the organiser's description (a time range or a stated end) nor a learned rule gives the end. Correct the end in the target calendar once – it is learned for this party and location."
         }
       }
     },

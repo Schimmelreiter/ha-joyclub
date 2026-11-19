@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
 from .const import DOMAIN
+from .parser import STATUS_BOOKMARKED, STATUS_WAITLIST
 
 
 def device_info(entry: ConfigEntry) -> DeviceInfo:
@@ -17,3 +19,15 @@ def device_info(entry: ConfigEntry) -> DeviceInfo:
         entry_type=DeviceEntryType.SERVICE,
         configuration_url="https://www.joyclub.de/dates_partys/events/registrations/",
     )
+
+
+SUFFIXES = {
+    "de": {STATUS_WAITLIST: " (Warteliste)", STATUS_BOOKMARKED: " (gemerkt)"},
+    "en": {STATUS_WAITLIST: " (waiting list)", STATUS_BOOKMARKED: " (bookmarked)"},
+}
+
+
+def suffix(hass: HomeAssistant, status: str) -> str:
+    """Status marker for the title in the language of Home Assistant."""
+    lang = "de" if (hass.config.language or "").startswith("de") else "en"
+    return SUFFIXES[lang].get(status, "")

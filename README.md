@@ -4,9 +4,9 @@ Your JOYclub party registrations as a calendar in Home Assistant – and, if you
 copied into another calendar (e.g. Google Calendar) **with real end times**. Plus a sensor
 for unread ClubMails. Several accounts (e.g. both partners) are supported.
 
-JOYclub's own iCal export always ends a party at its start (DTEND = DTSTART), so calendars
-show it without duration. This integration takes the end from the organiser's text
-(“Event-Zeit: 19.30 Uhr bis 03.00 Uhr”, “Partyende 2:00 Uhr”, “Ende: 01 Uhr”), from end times
+JOYclub's own *Add to calendar* file always ends a party at its start (DTEND = DTSTART), so
+calendars show it without duration. This integration takes the end from the organiser's
+description (a time range such as 19.30–03.00 or a stated end of the party), from an end time
 you corrected once, or else uses a default duration and tells you.
 
 ## Installation
@@ -20,7 +20,7 @@ Manual: copy `custom_components/joyclub` into your `config/custom_components`, r
 
 *Settings → Devices & services → Add integration → JOYclub*, one entry per account:
 
-1. Log in to JOYclub in a browser with **“Angemeldet bleiben” (stay logged in)**.
+1. Log in to JOYclub in a browser with **Stay logged in** ticked.
 2. Copy the cookie **`SSOAUTOID`** of `identity.joyclub.com` (browser developer tools →
    Application/Storage → Cookies, or a cookie export extension). It is valid for one year.
 3. Paste it together with a name for the account.
@@ -37,7 +37,7 @@ instance. It is only used if Cloudflare ever answers a request with a challenge 
 
 | Entity | Description |
 | --- | --- |
-| Calendar *Events* | Own future events: registered, waiting list “(Warteliste)”, bookmarked “(gemerkt)”. |
+| Calendar *Events* | Own future events from *My event registrations*: registered, on the waiting list, bookmarked (marked in the title). |
 | Sensor *Unread ClubMails* | Unread messages; unread conversations as attribute. |
 | Sensor *Next party* | Start of the next registered party; title, location, end and link as attributes. |
 
@@ -47,7 +47,7 @@ instance. It is only used if Cloudflare ever answers a request with a challenge 
 | --- | --- |
 | Copy events into a calendar | Per account; off by default. |
 | Target calendar | Any calendar that can create events (Google, Local Calendar, CalDAV …). |
-| Include waiting lists | Copy events you are on the waiting list for (title gets “(Warteliste)”). |
+| Include waiting lists | Also copy events you are on the waiting list for (marked in the title). |
 | Bookmarked events | yes / no / ask. |
 | Delete events you deregistered from | yes / no / ask (default). |
 | Duration if no end is known | Default 6 h. |
@@ -93,9 +93,9 @@ Example: a notification with buttons for `joyclub_end_time_guessed` or
 
 - Session: `www.joyclub.de/webauth/login/` → `identity.joyclub.com/authorize` (code issued
   thanks to `SSOAUTOID`) → `www.joyclub.de/webauth/authenticated/`.
-- Registrations: `/dates_partys/events/registrations/` and the following pages from
+- *My event registrations*: `/dates_partys/events/registrations/` and the following pages from
   `/dates_partys/dates_partys_scroll_data`.
-- Per event (cached for a day): the iCal download (start, address, coordinates) and the event
+- Per event (cached for a day): the *Add to calendar* file (start, address, coordinates) and the event
   page (description, own status).
 - ClubMails: the counter in the page navigation.
 
@@ -104,23 +104,3 @@ Read only – the integration never registers, deregisters or writes anything on
 ## License
 
 MIT
-
----
-
-# JOYclub für Home Assistant (Deutsch)
-
-Deine JOYclub-Anmeldungen als Kalender in Home Assistant – auf Wunsch übernommen in einen
-anderen Kalender (z. B. Google) **mit echter Endzeit**, dazu ein Sensor für ungelesene
-ClubMails. Mehrere Konten (z. B. beide Partner) möglich.
-
-**Einrichtung:** bei JOYclub mit „Angemeldet bleiben“ einloggen, das Cookie `SSOAUTOID` von
-`identity.joyclub.com` kopieren (ein Jahr gültig) und in *Einstellungen → Geräte & Dienste →
-Integration hinzufügen → JOYclub* einfügen. Ein Passwort braucht die Integration nicht.
-
-**Endzeit:** aus dem Text des Veranstalters („19.30 Uhr bis 03.00 Uhr“, „Partyende 2:00 Uhr“),
-sonst aus einer gelernten Regel (Ende einmal im Zielkalender korrigieren – gilt dann für diese
-Party an diesem Ort), sonst Standarddauer mit Hinweis-Ereignis.
-
-**Optionen je Konto:** Kalender-Abgleich an/aus, Zielkalender, Wartelisten, Gemerkte
-(ja/nein/nachfragen), Abgemeldete löschen (ja/nein/nachfragen), Standarddauer, Abfrageintervalle,
-FlareSolverr-Adresse. Details siehe oben.
