@@ -11,7 +11,9 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.calendar import DATA_COMPONENT, CalendarEntityFeature, CalendarEvent
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -23,6 +25,7 @@ from .const import (
     CONF_SYNC,
     CONF_TARGET,
     CONF_WAITLIST,
+    DOMAIN,
     EVENT_ASK_BOOKMARKED,
     EVENT_ASK_CANCELLED,
     EVENT_CREATED,
@@ -46,6 +49,14 @@ if TYPE_CHECKING:
     from .coordinator import EventsCoordinator, JoyEvent
 
 _LOGGER = logging.getLogger(__name__)
+RETRY_DELAY = 60  # seconds until a sync into a calendar that was not ready is tried again
+RETRY_QUIET = 5  # retries logged at debug level before a warning
+
+
+class TargetNotReady(Exception):
+    """The target calendar cannot be read yet (e.g. Google still syncing after a restart)."""
+
+
 _PRIO = {parser.STATUS_REGISTERED: 3, parser.STATUS_WAITLIST: 2, parser.STATUS_BOOKMARKED: 1}
 
 
@@ -60,6 +71,8 @@ class CalendarSync:
         self.decisions: dict[str, str] = {}
         self.asked: dict[str, str] = {}
         self._lock = asyncio.Lock()
+        self._retry_unsub = None
+        self._not_ready = 0
 
     async def async_load(self) -> None:
         data = await self._store.async_load() or {}
@@ -137,14 +150,46 @@ class CalendarSync:
                     and coord.data is not None
                 ):
                     targets.setdefault(entry.options[CONF_TARGET], []).append((entry, coord))
+            not_ready = False
             for target, accounts in targets.items():
                 try:
                     actions += await self._sync_target(target, accounts, dry_run)
+                except TargetNotReady as err:
+                    not_ready = True
+                    if dry_run:
+                        actions.append({"target": target, "result": f"calendar not ready: {err}"})
                 except Exception:  # noqa: BLE001 - one calendar must not stop the others
                     _LOGGER.exception("Sync into %s failed", target)
             if not dry_run:
                 self._save()
+                self._schedule_retry(not_ready)
         return actions
+
+    def _schedule_retry(self, not_ready: bool) -> None:
+        """Try again later while a target calendar is not ready; quiet at first (normal after a restart)."""
+        if self._retry_unsub:
+            self._retry_unsub()
+            self._retry_unsub = None
+        if not not_ready:
+            self._not_ready = 0
+            return
+        self._not_ready += 1
+        level = logging.WARNING if self._not_ready > RETRY_QUIET else logging.DEBUG
+        _LOGGER.log(level, "Target calendar not ready (attempt %s), retrying in %s s", self._not_ready, RETRY_DELAY)
+
+        @callback
+        def _retry(_now: Any) -> None:
+            self._retry_unsub = None
+            if debouncer := self.hass.data.get(DOMAIN, {}).get("debouncer"):
+                self.hass.async_create_task(debouncer.async_call())
+
+        self._retry_unsub = async_call_later(self.hass, RETRY_DELAY, _retry)
+
+    def cancel_retry(self) -> None:
+        """Stop a pending retry (last account unloaded)."""
+        if self._retry_unsub:
+            self._retry_unsub()
+            self._retry_unsub = None
 
     def _summary(self, ev: JoyEvent) -> str:
         return (ev.display_title or ev.title) + suffix(self.hass, ev.status)
@@ -184,7 +229,10 @@ class CalendarSync:
             starts = [s for s in starts if s]
             window_start = min(starts + [now]) - timedelta(days=1)
             window_end = max(starts + [now]) + timedelta(days=2)
-            existing = await cal.async_get_events(self.hass, window_start, window_end)
+            try:
+                existing = await cal.async_get_events(self.hass, window_start, window_end)
+            except HomeAssistantError as err:
+                raise TargetNotReady(str(err)) from err
         else:
             existing = []
         by_eid: dict[str, CalendarEvent] = {}

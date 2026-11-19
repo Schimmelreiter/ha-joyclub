@@ -17,6 +17,7 @@ from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.typing import ConfigType
 
 from .api import JoyclubAuthError, JoyclubClient, JoyclubError
+from .brand import async_apply_brand
 from .const import CONF_COOKIE_FILE, CONF_FLARESOLVERR, CONF_SSOAUTOID, DOMAIN, MODE_NO, MODE_YES
 from .cookies import CookieFileError, async_read_cookie_file
 from .coordinator import ClubmailCoordinator, EventsCoordinator
@@ -49,6 +50,7 @@ def _loaded(hass: HomeAssistant) -> list[JoyclubConfigEntry]:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Shared calendar sync and the actions."""
+    await async_apply_brand(hass)
     sync = CalendarSync(hass)
     await sync.async_load()
     hass.data.setdefault(DOMAIN, {})["sync"] = sync
@@ -150,4 +152,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: JoyclubConfigEntry) -> 
     ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if ok and not [e for e in _loaded(hass) if e.entry_id != entry.entry_id]:
         hass.data[DOMAIN]["debouncer"].async_cancel()
+        hass.data[DOMAIN]["sync"].cancel_retry()
     return ok

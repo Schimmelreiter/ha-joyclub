@@ -204,3 +204,12 @@ def test_opening_hours() -> None:
     thu = datetime(2026, 12, 31, 19, 0, tzinfo=TZ)
     assert parser.end_from_opening_hours(hours, thu) is None  # closed on Thursdays
     assert parser.end_from_opening_hours({}, fri) is None
+
+
+def test_clean_title_canadian_syllabics() -> None:
+    assert parser.clean_title("ᗪIᖇTY ᔕᗴ᙭ ᑭᗩᖇTY") == "DIRTY SEX PARTY"
+    assert parser.clean_title("ᗷᒪᗩᑕK ᗯᕼITᗴ") == "BLACK WHITE"
+    # only look-alikes, no Latin letter at all
+    assert parser.clean_title("ᗪᗩᑎᑕᗴ") == "DANCE"
+    # real syllabic text (letters without a Latin look-alike) stays as it is
+    assert parser.clean_title("ᐃᓄᒃᑎᑐᑦ") == "ᐃᓄᒃᑎᑐᑦ"

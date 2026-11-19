@@ -514,3 +514,74 @@ async def test_end_from_club_opening_hours(hass: HomeAssistant, joy: FakeJoy, tm
     await _sync(hass)
     assert [g.data["event_id"] for g in guessed] == ["222"]
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_sync_waits_for_target_calendar(hass: HomeAssistant, joy: FakeJoy, tmp_path, caplog) -> None:
+    """Right after a restart Google may not be readable yet: no error, retried later."""
+    from homeassistant.exceptions import HomeAssistantError
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.joyclub import sync as sync_mod
+
+    target = await _target(hass, tmp_path)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Hauke",
+        unique_id="4711",
+        data={CONF_SSOAUTOID: "abc"},
+        options={CONF_SYNC: True, CONF_TARGET: target},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    ent = hass.data[DATA_COMPONENT].get_entity(target)
+    real = type(ent).async_get_events
+
+    async def not_ready(self, hass, start, end):
+        raise HomeAssistantError("Unable to get events: Sync from server has not completed")
+
+    with patch.object(type(ent), "async_get_events", not_ready):
+        await _sync(hass)
+        assert "Sync into" not in caplog.text
+        preview = await hass.services.async_call(DOMAIN, "preview", {}, blocking=True, return_response=True)
+        assert preview["actions"] == [
+            {"target": target, "result": "calendar not ready: Unable to get events: Sync from server has not completed"}
+        ]
+    assert await real(ent, hass, dt_util.now(), dt_util.now() + timedelta(days=60)) == []
+
+    # The retry runs the sync again once the calendar can be read
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=sync_mod.RETRY_DELAY + 1))
+    await hass.async_block_till_done()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=sync_mod.RETRY_DELAY + 15))
+    await hass.async_block_till_done()
+    assert {e.summary for e in await _events(hass, target)} == {"Party A", "Party B"}
+    assert hass.data[DOMAIN]["sync"]._retry_unsub is None
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+def test_brand_images(tmp_path) -> None:
+    """Own images from the configuration directory replace the shipped icon, which comes back without them."""
+    from custom_components.joyclub.brand import apply_brand
+
+    own, brand, default = tmp_path / "own", tmp_path / "brand", tmp_path / "default"
+    default.mkdir()
+    (default / "icon.png").write_bytes(b"neutral")
+    (default / "icon@2x.png").write_bytes(b"neutral2")
+    brand.mkdir()
+    (brand / "icon.png").write_bytes(b"neutral")
+
+    assert apply_brand(own, brand, default) is False  # no own folder
+    assert sorted(p.name for p in brand.iterdir()) == ["icon.png", "icon@2x.png"]
+
+    own.mkdir()
+    (own / "icon.png").write_bytes(b"own")
+    (own / "dark_icon.png").write_bytes(b"own-dark")
+    (own / "notes.txt").write_text("ignored")
+    (own / "other.png").write_bytes(b"ignored")
+    assert apply_brand(own, brand, default) is True
+    assert {p.name: p.read_bytes() for p in brand.iterdir()} == {"icon.png": b"own", "dark_icon.png": b"own-dark"}
+
+    for p in own.iterdir():
+        p.unlink()
+    assert apply_brand(own, brand, default) is False
+    assert {p.name: p.read_bytes() for p in brand.iterdir()} == {"icon.png": b"neutral", "icon@2x.png": b"neutral2"}

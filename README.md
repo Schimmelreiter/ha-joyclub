@@ -139,6 +139,14 @@ Example: a notification with buttons for `joyclub_end_time_guessed` or
 
 Read only – the integration never registers, deregisters or writes anything on JOYclub.
 
+## Own icon
+
+To show a different icon in Home Assistant, put PNG files named like Home Assistant's brand images
+(`icon.png` 256×256, `icon@2x.png` 512×512, optionally `dark_icon.png`, `logo.png` and their
+`@2x`/`dark_` variants) into `<config>/joyclub/brand/`. They are used from the next start of
+Home Assistant, also after updates of the integration; remove them to get the shipped icon back.
+Only use images you have the right to use.
+
 ## License
 
 MIT. The icon is `mdi:cards-heart` from [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers Free License, Apache 2.0); it is not the JOYclub logo.

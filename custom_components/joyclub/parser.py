@@ -424,6 +424,11 @@ _HOMOGLYPHS = {
     "ᴀ": "A", "ʙ": "B", "ᴄ": "C", "ᴅ": "D", "ᴇ": "E", "ɢ": "G", "ʜ": "H", "ɪ": "I", "ᴊ": "J", "ᴋ": "K",
     "ʟ": "L", "ᴍ": "M", "ɴ": "N", "ᴏ": "O", "ᴘ": "P", "ʀ": "R", "ꜱ": "S", "ᴛ": "T", "ᴜ": "U", "ᴠ": "V",
     "ᴡ": "W", "ʏ": "Y", "ᴢ": "Z", "ɛ": "E", "Ɛ": "E",
+    # Canadian syllabics (and two others) of "fancy text" generators
+    "ᗩ": "A", "ᗅ": "A", "ᐱ": "A", "ᗷ": "B", "ᗽ": "B", "ᑕ": "C", "ᑢ": "C", "ᗪ": "D", "ᗞ": "D", "ᗴ": "E",
+    "ᕮ": "E", "ᖴ": "F", "ᘜ": "G", "Ꮐ": "G", "ᕼ": "H", "ᒍ": "J", "ᛕ": "K", "ᒪ": "L", "ᗰ": "M", "ᘻ": "M",
+    "ᑎ": "N", "ᑭ": "P", "ᑫ": "Q", "ᖇ": "R", "ᖆ": "R", "ᔕ": "S", "ᑌ": "U", "ᑘ": "U", "ᐯ": "V", "ᐺ": "V",
+    "ᗯ": "W", "ᙎ": "W", "᙭": "X", "ᘔ": "Z",
 }
 # fmt: on
 # Letters in circles/squares without a compatibility decomposition (negative circled/squared, flags)
@@ -473,7 +478,8 @@ def clean_title(title: str, abbreviations: dict[str, str] | None = None) -> str:
     "𝗡𝗢 𝗟 ⵑ 𝗠 ⵑ 𝗧 𝗦 𝑯Ü X-MAS🎄" -> "NO LIMITS HÜ X-MAS" (with {"HÜ": "H Ü"}: "NO LIMITS H Ü X-MAS").
     """
     s = unicodedata.normalize("NFKC", title or "")
-    if re.search(r"[A-Za-z]", s):
+    letters = [ch for ch in s if ch.isalpha()]
+    if re.search(r"[A-Za-z]", s) or (letters and all(ch in _HOMOGLYPHS for ch in letters)):
         s = s.translate(_HOMOGLYPH_TABLE)
     s = "".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in s)
     s = "".join(ch for ch in s if unicodedata.category(ch) not in _DROP_CATEGORIES)
