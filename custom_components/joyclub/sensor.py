@@ -24,7 +24,7 @@ async def async_setup_entry(
 
 
 class ClubmailSensor(CoordinatorEntity[ClubmailCoordinator], SensorEntity):
-    """Unread ClubMails (messages); conversations as attribute."""
+    """Unread ClubMails counted like the badge on joyclub.de (conversations); messages as attribute."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "clubmail"
@@ -37,14 +37,14 @@ class ClubmailSensor(CoordinatorEntity[ClubmailCoordinator], SensorEntity):
 
     @property
     def native_value(self) -> int | None:
-        return (self.coordinator.data or {}).get("unread_message_count")
+        return (self.coordinator.data or {}).get("unread_conversation_count")
 
     @property
     def extra_state_attributes(self) -> dict:
         d = self.coordinator.data or {}
         return {
             k: d.get(k)
-            for k in ("unread_conversation_count", "new_compliment_count", "incoming_express_mail")
+            for k in ("unread_message_count", "new_compliment_count", "incoming_express_mail")
             if k in d
         }
 

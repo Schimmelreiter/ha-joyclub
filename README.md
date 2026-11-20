@@ -50,7 +50,7 @@ instance. It is only used if Cloudflare ever answers a request with a challenge 
 | Entity | Description |
 | --- | --- |
 | Calendar *Events* | Own future events from *My event registrations*: registered, on the waiting list, bookmarked (marked in the title). |
-| Sensor *Unread ClubMails* | Unread messages; unread conversations as attribute. |
+| Sensor *Unread ClubMails* | Unread conversations, the number on the ClubMail badge of joyclub.de; unread messages as attribute. |
 | Sensor *Next party* | Start of the next registered party; title, location, end and link as attributes. |
 
 ## Calendar sync (options)

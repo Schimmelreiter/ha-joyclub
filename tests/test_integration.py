@@ -181,7 +181,10 @@ async def test_entities_and_sync(hass: HomeAssistant, joy: FakeJoy, tmp_path) ->
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert hass.states.get("sensor.joyclub_hauke_unread_clubmails").state == "7"
+    # like the badge on joyclub.de: conversations, not messages
+    clubmails = hass.states.get("sensor.joyclub_hauke_unread_clubmails")
+    assert clubmails.state == "6"
+    assert clubmails.attributes["unread_message_count"] == 7
     assert hass.states.get("sensor.joyclub_hauke_next_party").state != "unknown"
     assert hass.states.get("calendar.joyclub_hauke_events") is not None
 
